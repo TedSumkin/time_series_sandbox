@@ -20,7 +20,7 @@ venv/
 
 # Project outputs
 outputs/
-multitun/*
+multirun/
 runs/
 artifacts/
 logs/
