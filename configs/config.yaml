@@ -1,0 +1,18 @@
+﻿defaults:
+  - _self_
+  - tasks: dummy
+  - models: dummy
+  - baselines: dummy
+  - runner: dummy
+  - data: dummy
+  - metrics: dummy
+  - viz: dummy
+  - utils: dummy
+  - random_seed: basic
+
+experiment_name: dummy_experiment
+
+hydra:
+  sweeper:
+    params:
+      random_seed.seed: 41, 42, 43

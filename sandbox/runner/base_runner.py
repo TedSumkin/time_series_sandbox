@@ -1,10 +1,19 @@
+import sys
+from pathlib import Path
+from typing import Dict, Mapping, Optional, Union
+
 import torch
 from omegaconf import DictConfig
-from typing import Union, Dict, Mapping, Optional
-from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
-from pathlib import Path
+
+# Allow running this file directly:
+# `python sandbox/runner/base_runner.py`
+if __package__ is None or __package__ == "":
+    repo_root = Path(__file__).resolve().parents[2]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
 
 from sandbox.contracts import BatchLike, TaskProtocol, ModelProtocol
 
@@ -35,6 +44,7 @@ class BaseRunner:
         scheduler (Optional[torch.optim.lr_scheduler._LRScheduler]): Learning rate scheduler (may be None).
         metrics (dict): Dictionary of metric callables.
     """
+
     def __init__(
         self,
         config: Union[Dict, DictConfig],
@@ -62,6 +72,7 @@ class BaseRunner:
 
         # make fields corresponding to arguments
         self.output_dir = output_dir
+        self.checkpoint_dir = Path(output_dir) / "checkpoints"
         self.logger = logger
         self.model = model
         self.config = config
@@ -136,7 +147,7 @@ class BaseRunner:
             if isinstance(loss, Mapping):
                 loss = loss["total"]
             total_loss += loss.item()
-            
+
             # compute metrics
             for name, metric_fn in self.metrics.items():
                 metric_sums[name] += metric_fn(prediction, batch).item()
@@ -151,8 +162,6 @@ class BaseRunner:
         for name in self.metrics:
             result[name] = metric_sums[name] / num_batches
         return result
-
-
 
     def _train_epoch(self, train_dl: DataLoader):
         """Perform a single training epoch.
@@ -190,10 +199,10 @@ class BaseRunner:
             Dict[str, float]: Validation metrics.
         """
         return self.eval(val_dl, "val")
-    
-    def _early_stopping(self, 
-                        old_metric_dict: Dict[str, float],
-                        metric_dict: Dict[str, float]) -> bool:
+
+    def _early_stopping(
+        self, old_metric_dict: Dict[str, float], metric_dict: Dict[str, float]
+    ) -> bool:
         if metric_dict[self.key_val_metric] < old_metric_dict[self.key_val_metric]:
             self.early_stopping_counter = 0
         else:
@@ -201,7 +210,6 @@ class BaseRunner:
             if self.early_stopping_counter >= self.patience:
                 return True
         return False
-
 
     def train(self, model, train_dl, val_dl):
         """Train the model for a configured number of epochs.
@@ -227,27 +235,26 @@ class BaseRunner:
 
         # train dataloader is expected to exist
         pbar_upper_level = tqdm(range(self.epochs), desc="Epochs", position=0)
-        
+
         best_metric_dict = {key: torch.inf for key in self.metrics}
         old_metric_dict = {self.key_val_metric: torch.inf}
         for epoch in pbar_upper_level:
             self._train_epoch(train_dl)
             metric_dict = self._val_epoch(val_dl)
-            
+
             # check if early stopping is needed
             if self._early_stopping(old_metric_dict, metric_dict):
                 pbar_upper_level.close()
                 break
-            
+
             # save best metric dict and checkpoints
             if metric_dict[self.key_val_metric] < key_val_metric_value:
                 key_val_metric_value = metric_dict[self.key_val_metric]
                 old_metric_dict = best_metric_dict
                 best_metric_dict = metric_dict
                 # temporal placeholder for checkpoint saving to the output dir
-                self.model.save_checkpoint(
-                    self.checkpoint_dir, epoch, metric_dict
-                )
+                if hasattr(self.model, "save_checkpoint"):
+                    self.model.save_checkpoint(self.checkpoint_dir, epoch, metric_dict)
         return best_metric_dict
 
     def test(self, test_dl: DataLoader):
@@ -276,9 +283,7 @@ if __name__ == "__main__":
         def __init__(self, input_dim=4, output_dim=1, horizon=1):
             super().__init__()
             self.net = nn.Sequential(
-                nn.Linear(input_dim, 8),
-                nn.ReLU(),
-                nn.Linear(8, horizon * output_dim)
+                nn.Linear(input_dim, 8), nn.ReLU(), nn.Linear(8, horizon * output_dim)
             )
             self.horizon = horizon
             self.output_dim = output_dim
@@ -300,12 +305,10 @@ if __name__ == "__main__":
         def configure_optimizers(self, cfg):
             lr = cfg.get("lr", 0.001)
             optimizer = torch.optim.Adam(self.parameters(), lr=lr)
-            scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.9)
+            scheduler = torch.optim.lr_scheduler.StepLR(
+                optimizer, step_size=1, gamma=0.9
+            )
             return optimizer, scheduler
-
-        def save_checkpoint(self, checkpoint_dir, epoch, metric_dict):
-            # Dummy implementation for test
-            pass
 
     # ---- Simple task ----
     class DummyTask:
@@ -329,6 +332,7 @@ if __name__ == "__main__":
                 else:
                     target = torch.zeros_like(prediction)
                 return torch.mean(torch.abs(prediction - target))
+
             return {"mae": mae}
 
         def build_dataloaders(self, cfg):
@@ -354,15 +358,10 @@ if __name__ == "__main__":
             "device": "cpu",
             "epochs": 2,
             "lr": 0.01,
-            "early_stopping": {"patience": 3}
+            "early_stopping": {"patience": 3},
         },
-        "eval": {
-            "init": {
-                "main_val_metric": "loss",
-                "key_val_metric": "mae"
-            }
-        },
-        "test": {}
+        "eval": {"init": {"main_val_metric": "loss", "key_val_metric": "mae"}},
+        "test": {},
     }
 
     # ---- Temporary directory for logs ----

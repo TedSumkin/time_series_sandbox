@@ -26,8 +26,8 @@ artifacts/
 logs/
 
 # Configs (local/project configs)
-configs/
-*.yaml
+#configs/
+#*.yaml
 *.yml
 *.toml
 *.ini
