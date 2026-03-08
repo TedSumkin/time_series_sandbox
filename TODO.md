@@ -38,6 +38,7 @@ Definition of Done (общий):
   - Task:
     - `build_dataloaders(cfg) -> (train, val, test)`
     - `loss_fn(outputs, batch) -> loss`
+    - `configure_metrics(config) -> dict[str, Callable]`
     - `metrics(pred, batch) -> dict[str, float]`
     - `visualize(pred, batch, outdir) -> None`
     - `sanity_checks(cfg) -> list[CheckResult]`
@@ -50,15 +51,15 @@ Definition of Done (общий):
     - `eval(task, model, dataloader, cfg) -> metrics + optional preds`
     - `test(task, model, dataloader, cfg) -> metrics + optional preds`
 
-- [ ] Принять формат batch (минимум для forecasting):
+- [x] Принять формат batch (минимум для forecasting):
   - `batch = { "x": (B,T,F), "y": (B,H,F_out), "meta": {...} }` (или эквивалент)
 
 ### День 4: Runner v0 (train/eval, логи, чекпоинты, артефакты)
 
 - [ ] Реализовать `runner/runner.py`:
-  - [ ] train loop + val loop
-  - [ ] early stopping (простая версия)
-  - [ ] сохранение best checkpoint
+  - [x] train loop + val loop
+  - [x] early stopping (простая версия)
+  - [x] сохранение best checkpoint
   - [ ] сохранение `metrics.json`/`metrics.csv`
   - [ ] сохранение `config.yaml` + `seed`
 - [ ] Добавить базовое логирование (stdout + файл `run.log`)
@@ -194,4 +195,3 @@ TODO:
 ---
 
 - [ ] сделать нормальные dummy-configs
-
