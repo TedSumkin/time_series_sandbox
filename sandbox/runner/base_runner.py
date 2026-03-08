@@ -8,12 +8,14 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 
+import json
 # Allow running this file directly:
 # `python sandbox/runner/base_runner.py`
 if __package__ is None or __package__ == "":
     repo_root = Path(__file__).resolve().parents[2]
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
+
 
 from sandbox.contracts import BatchLike, TaskProtocol, ModelProtocol
 
@@ -210,7 +212,17 @@ class BaseRunner:
             if self.early_stopping_counter >= self.patience:
                 return True
         return False
+    
+    def save_metrics(self, metric_dict: Dict[str, float], destination_path: Union[str, Path]):
+        """Save metrics to a file.
 
+        Args:
+            metric_dict (Dict[str, float]): Metrics to save.
+            destination_path (Union[str, Path]): Path to save metrics to.
+        """
+        with open(destination_path, "w") as f:
+            json.dump(metric_dict, f)
+        
     def train(self, model, train_dl, val_dl):
         """Train the model for a configured number of epochs.
 
@@ -255,6 +267,7 @@ class BaseRunner:
                 # temporal placeholder for checkpoint saving to the output dir
                 if hasattr(self.model, "save_checkpoint"):
                     self.model.save_checkpoint(self.checkpoint_dir, epoch, metric_dict)
+                    
         return best_metric_dict
 
     def test(self, test_dl: DataLoader):
@@ -265,7 +278,8 @@ class BaseRunner:
         Args:
             test_dl (DataLoader): Test data loader.
         """
-        self.eval(test_dl, "test")
+        metric_dict = self.eval(test_dl, "test")
+        self.save_metrics(metric_dict, Path(self.output_dir / "results.json"))
 
 
 # micro-test for all functions.
