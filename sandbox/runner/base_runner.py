@@ -8,6 +8,9 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 
+import copy
+import gc
+
 import json
 # Allow running this file directly:
 # `python sandbox/runner/base_runner.py`
@@ -280,6 +283,126 @@ class BaseRunner:
         """
         metric_dict = self.eval(test_dl, "test")
         self.save_metrics(metric_dict, Path(self.output_dir / "results.json"))
+
+    def run_checks(self):
+        """Run checks on the model.
+
+        Checks include:
+            - Model has a forward method
+            - Model is overfitting on one batch
+            - Dataset is finite
+            - Gradients are finite
+        """
+        self.model_forward_check()
+        self.overfit_one_batch_check(self.train_dl)
+        self.finite_dataset_check(self.train_dl, "Train")
+        self.finite_grad_check(self.train_dl)
+
+    def model_forward_predict_check(self):
+        """Check that the model has a forward method.
+
+        Args:
+            model (nn.Module): Model to check.
+        """
+        assert hasattr(self.model, "forward"), "Model class must have a forward method"
+        assert hasattr(self.model, "predict"), "Model class must have a predict method"
+
+
+    def overfit_one_batch_check(self, train_dl: DataLoader, num_steps: int=200):
+        """Check that the model is overfitting on one batch.
+
+        Args:
+            train_dl (DataLoader): Training data loader.
+            num_steps (int): Number of steps to train.
+        """
+        print("Checking overfitting on one batch...")
+        model = copy.deepcopy(self.model)
+        model.to(self.device)
+        model.train()
+        optimizer, scheduler = model.configure_optimizers(self.train_config)
+        loss_fn = model.configure_loss_fn(self.train_config)
+
+        for batch in train_dl:
+            break
+        loss = []
+        for i in range(num_steps):
+            optimizer.zero_grad()
+            output = self.model(batch)
+
+            loss.append(loss_fn(output, batch))
+            loss[-1].backward()
+            optimizer.step()
+
+        print(f"Initial loss: {loss[0]}, final loss: {loss[-1]}, ratio: {loss[-1] / loss[0]}")
+        assert loss[-1] / loss[0] < 1e-3, "Model is not overfitting"
+        
+        # force memory deallocation
+        del model
+        gc.collect()
+        print("Overfitting check passed")
+
+    def finite_dataset_check(self, dataloader: DataLoader, dataloder_name: str="Train"):
+        """Check that the dataset is finite.
+
+        Args:
+            dataloader (DataLoader): Dataloader to check.
+            dataloder_name (str): Name of the dataloader.
+        """
+        print(f"Checking finite dataset for {dataloder_name} dataloader...")
+        for batch in dataloader:
+            assert torch.isfinite(batch).all(), f"{dataloder_name} dataloader contains non-finite values"
+
+    def finite_grad_check(self, dataloader: DataLoader):
+        """"Check that the gradients are finite.
+
+        Args:
+            dataloader (DataLoader): Dataloader to check.
+        """
+
+        print("Checking finite gradients...")
+        model = copy.deepcopy(self.model)
+        model.train()
+        model.to(self.device)
+
+        optimizer, scheduler = model.configure_optimizers(self.train_config)
+        loss_fn = model.configure_loss_fn(self.train_config)
+        for batch in dataloader:
+            optimizer.zero_grad()
+            output = model(batch)
+            loss = loss_fn(output, batch)
+            loss.backward()
+
+            for param in model.parameters():
+                assert torch.isfinite(param.grad).all(), f"Model yields non-finite gradients"
+
+        # imitate first epoch
+        for batch in dataloader:
+            optimizer.zero_grad()
+            output = model(batch)
+            loss = loss_fn(output, batch)
+            loss.backward()
+
+            for param in model.parameters():
+                assert torch.isfinite(param.grad).all(), f"Model yields non-finite gradients"
+            optimizer.step()
+        print("Finite gradients check passed")
+        
+    
+    def finite_model_output_check(self, dataloader: DataLoader, dataloder_name: str="Train"):
+        """Check that the model output is finite.
+
+        Args:
+            dataloader (DataLoader): Dataloader to check.
+            dataloder_name (str): Name of the dataloader.
+        """
+        print(f"Checking finite model output for {dataloder_name} dataloader...")
+        model = copy.deepcopy(self.model)
+        model.to(self.device)
+        model.eval()
+        for batch in dataloader:
+            output = self.model(batch)
+            assert torch.isfinite(output).all(), f"{dataloder_name} dataloader contains non-finite values"
+        print("Finite model output check passed")
 
 
 # micro-test for all functions.
