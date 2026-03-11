@@ -56,13 +56,13 @@ Definition of Done (общий):
 
 ### День 4: Runner v0 (train/eval, логи, чекпоинты, артефакты)
 
-- [ ] Реализовать `runner/runner.py`:
+- [x] Реализовать `runner/runner.py`:
   - [x] train loop + val loop
   - [x] early stopping (простая версия)
   - [x] сохранение best checkpoint
-  - [ ] сохранение `metrics.json`/`metrics.csv`
-  - [ ] сохранение `config.yaml` + `seed`
-- [ ] Добавить базовое логирование (stdout + файл `run.log`)
+  - [x] сохранение `metrics.json`/`metrics.csv`
+  - [x] сохранение `config.yaml` + `seed` -- уже сохранено через декоратор @hydra.main
+- [ ] Добавить базовое логирование (stdout + файл `run.log`) [Забит болт, т.к. не вижу смысла]
 - [ ] Добавить “sanity run” режим: `--sanity_steps N` (например 100)
 
 ### День 6: Task v0 — Forecasting на простом датасете
@@ -153,12 +153,13 @@ TODO:
 - [ ] Обновить baseline-адаптеры, чтобы работали с любой задачей (где применимо)
 
 ### День 26: Репродьюсибилити и “таблица результатов”
-
-- [ ] Автоматический отчёт после запуска:
-  - [ ] `results.csv` (run_id, task, model, baseline, seed, метрики)
-  - [ ] папка `runs/<run_id>/` с артефактами
+Первая половина отсюда была сделана сразу, т.е. результаты и конфиги сохраняются через hydra.
+В режиме multirun папки с runs/<run_id>/ были сделаны через конфиг.
+- [x] Автоматический отчёт после запуска:
+  - [x] `results.csv` (run_id, task, model, baseline, seed, метрики)
+  - [x] папка `runs/<run_id>/` с артефактами
 - [ ] Сохранение “environment snapshot”:
-  - [ ] `pip freeze`/`conda env export` (по желанию)
+  - [ ] `pip freeze`/`conda env export` (по желанию) -- не нужно, кмк.
   - [ ] `git hash` + dirty flag
 
 ### День 28: README “как продукт” + финальная проверка
@@ -179,7 +180,7 @@ TODO:
 
 ## Бэклог (если останутся силы, НЕ обязательно)
 
-- [ ] Hydra/omegaconf конфиги
+- [x] Hydra/omegaconf конфиги
 - [ ] Optuna runner (30 трейлов) с сохранением лучших конфигов
 - [ ] Простая web-страница/markdown-репорт с картинками из последнего run
 - [ ] Dockerfile / Makefile
