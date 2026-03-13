@@ -282,7 +282,7 @@ class BaseRunner:
             test_dl (DataLoader): Test data loader.
         """
         metric_dict = self.eval(test_dl, "test")
-        self.save_metrics(metric_dict, Path(self.output_dir / "results.json"))
+        self.save_metrics(metric_dict, Path(self.output_dir) / "results.json")
 
     def run_checks(self):
         """Run checks on the model.
@@ -293,7 +293,7 @@ class BaseRunner:
             - Dataset is finite
             - Gradients are finite
         """
-        self.model_forward_check()
+        self.model_forward_predict_check()
         self.overfit_one_batch_check(self.train_dl)
         self.finite_dataset_check(self.train_dl, "Train")
         self.finite_grad_check(self.train_dl)
@@ -320,14 +320,14 @@ class BaseRunner:
         model.to(self.device)
         model.train()
         optimizer, scheduler = model.configure_optimizers(self.train_config)
-        loss_fn = model.configure_loss_fn(self.train_config)
+        loss_fn = self.task.loss_fn
 
         for batch in train_dl:
             break
         loss = []
         for i in range(num_steps):
             optimizer.zero_grad()
-            output = self.model(batch)
+            output = model(batch)
 
             loss.append(loss_fn(output, batch))
             loss[-1].backward()
@@ -350,7 +350,18 @@ class BaseRunner:
         """
         print(f"Checking finite dataset for {dataloder_name} dataloader...")
         for batch in dataloader:
-            assert torch.isfinite(batch).all(), f"{dataloder_name} dataloader contains non-finite values"
+            if isinstance(batch, torch.Tensor):
+                assert torch.isfinite(batch).all(), f"{dataloder_name} dataloader contains non-finite values"
+            elif isinstance(batch, (list, tuple)):
+                for item in batch:
+                    if isinstance(item, torch.Tensor):
+                        assert torch.isfinite(item).all(), f"{dataloder_name} dataloader contains non-finite values"
+            elif isinstance(batch, dict):
+                for item in batch.values():
+                    if isinstance(item, torch.Tensor):
+                        assert torch.isfinite(item).all(), f"{dataloder_name} dataloader contains non-finite values"
+            else:
+                raise TypeError(f"Unsupported batch type: {type(batch)}")
 
     def finite_grad_check(self, dataloader: DataLoader):
         """"Check that the gradients are finite.
@@ -365,7 +376,7 @@ class BaseRunner:
         model.to(self.device)
 
         optimizer, scheduler = model.configure_optimizers(self.train_config)
-        loss_fn = model.configure_loss_fn(self.train_config)
+        loss_fn = self.task.loss_fn
         for batch in dataloader:
             optimizer.zero_grad()
             output = model(batch)
@@ -400,7 +411,7 @@ class BaseRunner:
         model.to(self.device)
         model.eval()
         for batch in dataloader:
-            output = self.model(batch)
+            output = model(batch)
             assert torch.isfinite(output).all(), f"{dataloder_name} dataloader contains non-finite values"
         print("Finite model output check passed")
 
@@ -531,4 +542,12 @@ if __name__ == "__main__":
         runner.test(dataloader)
         print("Test executed.")
 
+        # ---- Sanity checks ----
+        runner.train_dl = dataloader
+        print("Running finite dataset check...")
+        runner.finite_dataset_check(dataloader, "Test")
+        print("Finite dataset check passed.")
+
         print("All basic tests passed.")
+
+# 
