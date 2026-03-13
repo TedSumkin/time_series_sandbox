@@ -548,6 +548,57 @@ if __name__ == "__main__":
         runner.finite_dataset_check(dataloader, "Test")
         print("Finite dataset check passed.")
 
+        print("Running finite gradient check...")
+        runner.finite_grad_check(dataloader)
+        print("Finite gradient check passed.")
+
+        print("Running finite model output check...")
+        runner.finite_model_output_check(dataloader, "Test")
+        print("Finite model output check passed.")
+
+        # Overfit check with a simple linear model (to ensure it passes)
+        print("Running overfit check with a simple linear model...")
+        # Create a simple linear model that can overfit quickly
+        class SimpleLinear(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.linear = torch.nn.Linear(1, 1)
+            def forward(self, batch):
+                if isinstance(batch, (list, tuple)):
+                    x = batch[0]
+                else:
+                    x = batch
+                return self.linear(x)
+            def predict(self, batch):
+                return self(batch)
+            def configure_optimizers(self, cfg):
+                # Use a high fixed learning rate for quick overfitting
+                optimizer = torch.optim.Adam(self.parameters(), lr=0.5)
+                scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.9)
+                return optimizer, scheduler
+
+        # Create a simple dataset where y = 2*x (easy to fit)
+        X_simple = torch.randn(4, 1)
+        y_simple = X_simple * 2
+        dataset_simple = TensorDataset(X_simple, y_simple)
+        dataloader_simple = DataLoader(dataset_simple, batch_size=4, shuffle=False)
+        model_simple = SimpleLinear()
+        runner_simple = BaseRunner(
+            config=config,
+            logger=logger,
+            output_dir=tmpdir,
+            task=task,
+            model=model_simple,
+        )
+        runner_simple.train_dl = dataloader_simple
+        runner_simple.overfit_one_batch_check(dataloader_simple, num_steps=200)
+        print("Overfit check passed.")
+
+        # Run full run_checks on the simple model
+        print("Running run_checks...")
+        runner_simple.run_checks()
+        print("All sanity checks passed.")
+
         print("All basic tests passed.")
 
 # 
