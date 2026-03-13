@@ -38,6 +38,7 @@ Definition of Done (общий):
   - Task:
     - `build_dataloaders(cfg) -> (train, val, test)`
     - `loss_fn(outputs, batch) -> loss`
+    - `configure_metrics(config) -> dict[str, Callable]`
     - `metrics(pred, batch) -> dict[str, float]`
     - `visualize(pred, batch, outdir) -> None`
     - `sanity_checks(cfg) -> list[CheckResult]`
@@ -50,19 +51,25 @@ Definition of Done (общий):
     - `eval(task, model, dataloader, cfg) -> metrics + optional preds`
     - `test(task, model, dataloader, cfg) -> metrics + optional preds`
 
-- [ ] Принять формат batch (минимум для forecasting):
+- [x] Принять формат batch (минимум для forecasting):
   - `batch = { "x": (B,T,F), "y": (B,H,F_out), "meta": {...} }` (или эквивалент)
 
 ### День 4: Runner v0 (train/eval, логи, чекпоинты, артефакты)
 
-- [ ] Реализовать `runner/runner.py`:
-  - [ ] train loop + val loop
-  - [ ] early stopping (простая версия)
-  - [ ] сохранение best checkpoint
-  - [ ] сохранение `metrics.json`/`metrics.csv`
-  - [ ] сохранение `config.yaml` + `seed`
-- [ ] Добавить базовое логирование (stdout + файл `run.log`)
-- [ ] Добавить “sanity run” режим: `--sanity_steps N` (например 100)
+- [x] Реализовать `runner/runner.py`:
+  - [x] train loop + val loop
+  - [x] early stopping (простая версия)
+  - [x] сохранение best checkpoint
+  - [x] сохранение `metrics.json`/`metrics.csv`
+  - [x] сохранение `config.yaml` + `seed` -- уже сохранено через декоратор @hydra.main
+- [ ] Добавить базовое логирование (stdout + файл `run.log`) [Забит болт, т.к. не вижу смысла]
+- [x] Добавить “sanity run” режим: `--sanity_steps N` (например 100):
+  - [x] Добавить функционал в BaseRunner (Добавлено в виде формулы)
+
+### Промежуточный день
+1. Нужно тестирование для самого простого случая.
+2. Я чувствую себя так себе в плане уверенности. Мне очень не хватает, чтобы в каком-то простом виде были протестированны написанные функции.
+// в общем, я оставил это дело помощнику по коду. Пусть справляется.
 
 ### День 6: Task v0 — Forecasting на простом датасете
 
@@ -152,12 +159,13 @@ TODO:
 - [ ] Обновить baseline-адаптеры, чтобы работали с любой задачей (где применимо)
 
 ### День 26: Репродьюсибилити и “таблица результатов”
-
-- [ ] Автоматический отчёт после запуска:
-  - [ ] `results.csv` (run_id, task, model, baseline, seed, метрики)
-  - [ ] папка `runs/<run_id>/` с артефактами
+Первая половина отсюда была сделана сразу, т.е. результаты и конфиги сохраняются через hydra.
+В режиме multirun папки с runs/<run_id>/ были сделаны через конфиг.
+- [x] Автоматический отчёт после запуска:
+  - [x] `results.csv` (run_id, task, model, baseline, seed, метрики)
+  - [x] папка `runs/<run_id>/` с артефактами
 - [ ] Сохранение “environment snapshot”:
-  - [ ] `pip freeze`/`conda env export` (по желанию)
+  - [ ] `pip freeze`/`conda env export` (по желанию) -- не нужно, кмк.
   - [ ] `git hash` + dirty flag
 
 ### День 28: README “как продукт” + финальная проверка
@@ -178,7 +186,7 @@ TODO:
 
 ## Бэклог (если останутся силы, НЕ обязательно)
 
-- [ ] Hydra/omegaconf конфиги
+- [x] Hydra/omegaconf конфиги
 - [ ] Optuna runner (30 трейлов) с сохранением лучших конфигов
 - [ ] Простая web-страница/markdown-репорт с картинками из последнего run
 - [ ] Dockerfile / Makefile
@@ -194,4 +202,3 @@ TODO:
 ---
 
 - [ ] сделать нормальные dummy-configs
-

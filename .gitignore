@@ -20,14 +20,14 @@ venv/
 
 # Project outputs
 outputs/
-multitun/
+multirun/
 runs/
 artifacts/
 logs/
 
 # Configs (local/project configs)
-configs/
-*.yaml
+#configs/
+#*.yaml
 *.yml
 *.toml
 *.ini
@@ -70,3 +70,4 @@ configs/
 
 # Jupyter
 .ipynb_checkpoints/
+LOGGING.md
