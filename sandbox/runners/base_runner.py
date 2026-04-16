@@ -106,7 +106,7 @@ class BaseRunner:
 
         # annotate optimizer and scheduler
         self.optimizer, self.scheduler = self.model.configure_optimizers(
-            self.train_config
+            self.config
         )
         self.metrics = self.task.configure_metrics(self.eval_config)
 
@@ -244,7 +244,7 @@ class BaseRunner:
         self.key_val_metric = self.eval_config["init"]["key_val_metric"]
         # Re-initialize optimizer and scheduler (optional, could reuse existing)
         self.optimizer, self.scheduler = self.model.configure_optimizers(
-            self.train_config
+            self.config
         )
         key_val_metric_value = torch.inf
 

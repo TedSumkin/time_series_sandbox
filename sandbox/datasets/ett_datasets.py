@@ -1,7 +1,7 @@
-import torch
-from torch.utils.data import Dataset
 from pathlib import Path
 import pandas as pd
+import numpy as np
+from torch.utils.data import Dataset
 
 from typing import Union, Dict
 from omegaconf import DictConfig
@@ -33,7 +33,7 @@ class ETTDataset(Dataset):
     ----------
     data : pd.DataFrame
         Normalized feature columns.
-    target : pd.Series
+    target : np.ndarray
         Normalized target column "OT" (Oil Temperature).
     timestamp : np.ndarray
         Normalized integer timestamps derived from the "date" column.
@@ -48,7 +48,8 @@ class ETTDataset(Dataset):
 
     def __init__(self, subdataset: str = "h1", 
                  normalization_type: str = "none",
-                 normalization_params: Union[Dict, DictConfig]=None):
+                 normalization_params: Union[Dict, DictConfig]=None,
+                 predict_ot_only: bool = True):
         
         super(ETTDataset, self).__init__()
 
@@ -57,33 +58,33 @@ class ETTDataset(Dataset):
             raise ValueError(f"Invalid subdataset {subdataset}. Must be one of {VALID_SUBDATASETS}")
         
 
+        # placeholder
+        if not predict_ot_only:
+            raise NotImplementedError("Currently only predict_ot_only=True is supported, meaning we only predict the 'OT' column. Support for predicting multiple columns will be added in the future.")
 
         path_to_data = Path(f"data/ETT/ETT{subdataset}.csv")
 
         if not path_to_data.exists():
             raise FileNotFoundError(f"Data file {path_to_data} not found. Please make sure the ETT dataset is downloaded and placed in the correct directory.")
 
-        self.data = pd.read_csv(path_to_data)
-        self.timestamp = self._form_timestamp()
-        self.target = self.data["OT"]
+        raw_data = pd.read_csv(path_to_data)
+        self.timestamp = self._form_timestamp(raw_data)
 
-        self.data = self.data.drop(columns=["date", "OT"])
-        self._normalize_data(normalization_type, normalization_params)
+        self.target = raw_data["OT"].to_numpy(dtype=np.float32)
 
-        # make torch tensors
-        self.timestamp = torch.tensor(self.timestamp, dtype=torch.float32)
-        self.data = torch.tensor(self.data.values, dtype=torch.float32)
-        self.target = torch.tensor(self.target.values, dtype=torch.float32)
+        # Here we drop only "date": "OT" remains in the feature matrix as both
+        # a predictor and the training target.
+        self.data = raw_data.drop(columns=["date"]).to_numpy(dtype=np.float32)
 
-    def _form_timestamp(self):
+    def _form_timestamp(self, data: pd.DataFrame) -> np.ndarray:
         """Convert the 'date' column to integer timestamps (seconds)."""
-        # Convert to pandas datetime, then to integer nanoseconds and to seconds
-        timestamps = pd.to_datetime(self.data["date"])
-        # Convert to nanoseconds (int64) and then to seconds
-        timestamp = (timestamps.astype('int64') // 10**9).to_numpy()
+        timestamps = pd.to_datetime(data["date"])
+        timestamp = (timestamps.astype("int64") // 10**9).to_numpy(dtype=np.float32)
         return timestamp
+    
+    
 
-    def _normalize_data(self, normalization_type: str, normalization_params: Union[Dict, DictConfig]) -> None:
+    def normalize_data(self, normalization_type: str, normalization_params: Union[Dict, DictConfig]) -> None:
         
         # check if normalization type is supported
         if normalization_type not in ["minmax", "standard", "none"]:
@@ -123,7 +124,6 @@ class ETTDataset(Dataset):
     def __getitem__(self, idx: int):
         return self.timestamp[idx], self.data[idx], self.target[idx]
 
-
 if __name__ == "__main__":
     subdataset = "h1"
     print("Testing ETTDataset with subdataset:", subdataset)
@@ -134,4 +134,4 @@ if __name__ == "__main__":
 
     for elem in dataset:
         for subelem in elem:
-            assert ~(torch.isnan(subelem)).any(), f"NaN found in ETT{subdataset} dataset"
+            assert not np.isnan(subelem).any(), f"NaN found in ETT{subdataset} dataset"
