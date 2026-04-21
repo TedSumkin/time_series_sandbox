@@ -1,0 +1,20 @@
+_target_: sandbox.models.mlp.MLP
+
+# Number of input features after flattening the model input.
+# With the default forecasting task config this is:
+#   context_length (24) * num_features (7) = 168
+input_dim: 168
+
+# Number of predicted target features per forecast step.
+output_dim: 1
+
+# Number of future steps predicted by the model.
+horizon: 1
+
+# Hidden layer widths for the feed-forward backbone.
+hidden_dims:
+  - 128
+  - 128
+
+# Optional dropout inserted after each hidden activation.
+dropout: 0.0

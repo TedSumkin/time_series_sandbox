@@ -19,7 +19,6 @@ if __package__ is None or __package__ == "":
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
 
-
 from sandbox.contracts import BatchLike, TaskProtocol, ModelProtocol
 
 
@@ -106,14 +105,16 @@ class BaseRunner:
 
         # annotate optimizer and scheduler
         self.optimizer, self.scheduler = self.model.configure_optimizers(
-            self.train_config
+            self.config
         )
         self.metrics = self.task.configure_metrics(self.eval_config)
 
         self.early_stopping_counter = 0
 
         self.patience = self.train_config["early_stopping"]["patience"]
-
+        
+        self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+            
     @torch.no_grad()
     def eval(self, dataloader: DataLoader, eval_mode: str) -> Dict[str, float]:
         """Evaluate the model on a given dataloader.
@@ -244,7 +245,7 @@ class BaseRunner:
         self.key_val_metric = self.eval_config["init"]["key_val_metric"]
         # Re-initialize optimizer and scheduler (optional, could reuse existing)
         self.optimizer, self.scheduler = self.model.configure_optimizers(
-            self.train_config
+            self.config
         )
         key_val_metric_value = torch.inf
 
@@ -268,10 +269,15 @@ class BaseRunner:
                 old_metric_dict = best_metric_dict
                 best_metric_dict = metric_dict
                 # temporal placeholder for checkpoint saving to the output dir
-                if hasattr(self.model, "save_checkpoint"):
-                    self.model.save_checkpoint(self.checkpoint_dir, epoch, metric_dict)
+                # TODO: implement save_checkpoint and save_vaL_metrics
+                self.model.save_checkpoint(self.checkpoint_dir)
+        self.save_metrics(best_metric_dict, Path(self.output_dir) / "val_metrics.json")
                     
         return best_metric_dict
+    
+    def load_best_checkpoint(self):
+        """Load the best checkpoint from the checkpoint directory."""
+        self.model.load_checkpoint(self.checkpoint_dir)
 
     def test(self, test_dl: DataLoader):
         """Evaluate the model on the test set.
@@ -283,6 +289,7 @@ class BaseRunner:
         """
         metric_dict = self.eval(test_dl, "test")
         self.save_metrics(metric_dict, Path(self.output_dir) / "results.json")
+        return metric_dict
 
     def run_checks(self):
         """Run checks on the model.

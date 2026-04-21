@@ -59,3 +59,5 @@ The output of  `__getitem__` function can be either one Tensor in case of simple
 
 - `batch = { "x": (B,T,F_in), "y": (B,H,F_out), "x_t":  (B, T, TF) | None,
 "y_t": Optional (B, H, TF) | None, "meta": {...} }`.  I'm not really sure what I shoud do in this case. In case when the task == reconstruction or `ad_recontruction`
+
+The main idea behind batch format is as follows: everything that can be potentially used in model forward during training and inference lays on the first layer. The other data, e.g. used in debugging, is hidden in "meta".
