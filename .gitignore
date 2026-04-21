@@ -70,4 +70,5 @@ logs/
 
 # Jupyter
 .ipynb_checkpoints/
+*.ipynb
 LOGGING.md
