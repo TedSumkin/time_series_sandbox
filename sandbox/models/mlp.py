@@ -7,6 +7,7 @@ fixed `(B, horizon, output_dim)` layout.
 
 from typing import Mapping, Sequence, Tuple, Union
 
+from pathlib import Path
 import torch
 from torch import nn
 
@@ -207,3 +208,11 @@ class MLP(nn.Module):
             self.parameters(), lr=lr, weight_decay=weight_decay
         )
         return optimizer, None
+
+    def save_checkpoint(self, checkpoint_dir: Union[str, Path]) -> None:
+        """Save the model checkpoint to the specified directory."""
+        torch.save(self.state_dict(), Path(checkpoint_dir) / "MLP.pth")
+
+    def load_checkpoint(self, checkpoint_dir: Union[str, Path]) -> None:
+        """Load the model checkpoint from the specified directory."""
+        self.load_state_dict(torch.load(Path(checkpoint_dir) / "MLP.pth"))

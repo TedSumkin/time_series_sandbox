@@ -268,10 +268,15 @@ class BaseRunner:
                 old_metric_dict = best_metric_dict
                 best_metric_dict = metric_dict
                 # temporal placeholder for checkpoint saving to the output dir
-                if hasattr(self.model, "save_checkpoint"):
-                    self.model.save_checkpoint(self.checkpoint_dir, epoch, metric_dict)
+                # TODO: implement save_checkpoint and save_vaL_metrics
+                self.model.save_checkpoint(self.checkpoint_dir)
+        self.save_metrics(best_metric_dict, Path(self.output_dir) / "val_metrics.json")
                     
         return best_metric_dict
+    
+    def load_best_checkpoint(self):
+        """Load the best checkpoint from the checkpoint directory."""
+        self.model.load_checkpoint(self.checkpoint_dir)
 
     def test(self, test_dl: DataLoader):
         """Evaluate the model on the test set.
@@ -283,6 +288,7 @@ class BaseRunner:
         """
         metric_dict = self.eval(test_dl, "test")
         self.save_metrics(metric_dict, Path(self.output_dir) / "results.json")
+        return metric_dict
 
     def run_checks(self):
         """Run checks on the model.

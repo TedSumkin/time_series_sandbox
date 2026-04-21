@@ -64,12 +64,16 @@ def main(cfg: DictConfig) -> str:
             model=model,
         )
 
+        # TO DO: move this block to runner code. 
+        # it looks unsafe
         train_dl, val_dl, test_dl = task.build_dataloaders(cfg)
         runner.train_dl = train_dl
         runner.val_dl = val_dl
         runner.test_dl = test_dl
 
         best_val_metrics = runner.train(model=model, train_dl=train_dl, val_dl=val_dl)
+        
+        runner.load_best_checkpoint()
         test_metrics = runner.test(test_dl=test_dl)
 
         summary_path = out_dir / "run_summary.txt"
