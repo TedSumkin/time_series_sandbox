@@ -19,7 +19,6 @@ if __package__ is None or __package__ == "":
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
 
-
 from sandbox.contracts import BatchLike, TaskProtocol, ModelProtocol
 
 
@@ -113,7 +112,9 @@ class BaseRunner:
         self.early_stopping_counter = 0
 
         self.patience = self.train_config["early_stopping"]["patience"]
-
+        
+        self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+            
     @torch.no_grad()
     def eval(self, dataloader: DataLoader, eval_mode: str) -> Dict[str, float]:
         """Evaluate the model on a given dataloader.
