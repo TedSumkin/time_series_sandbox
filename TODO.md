@@ -91,10 +91,10 @@ Definition of Done (общий):
 
 - [ ] Сделать механизм checks: `utils/checks.py` + формат результата (ok/fail + message)
 - [ ] Реализовать 5 sanity checks для forecasting:
-  1. [ ] `finite_check`: нет NaN/Inf в x/y, loss, grads
-  2. [ ] `shape_check`: формы `pred` и `y` согласованы
+  1. [x] `finite_check`: нет NaN/Inf в x/y, loss, grads
+  2. [x] `shape_check`: формы `pred` и `y` согласованы
   3. [ ] `split_check`: нет пересечения индексов train/val/test (если индексы доступны)
-  4. [ ] `overfit_one_batch_check`: модель за N шагов заметно снижает loss на одном batch
+  4. [x] `overfit_one_batch_check`: модель за N шагов заметно снижает loss на одном batch
   5. [ ] `off_by_one_check` на синтетике (или через контролируемый сдвиг)
 - [ ] Добавить `tests/test_sanity.py`:
   - [ ] тесты на падение при намеренной поломке (1–2 негативных теста)
