@@ -75,10 +75,10 @@ Definition of Done (общий):
   - [x] Без нормализаций
   - [x] С базовой нормализацией типа minmax
   Со временем необходимо в отдельную колонку вынести нормализацию.
-- [ ] Реализовать `tasks/forecasting.py`:
-  - [ ] генерация окон (context length `T`, horizon `H`)
-  - [ ] dataloaders (train/val/test)
-  - [ ] метрики: MSE/MAE + horizon-wise MSE (по шагам горизонта)
+- [x] Реализовать `tasks/forecasting.py`:
+  - [x] генерация окон (context length `T`, horizon `H`)
+  - [x] dataloaders (train/val/test)
+  - [x] метрики: MSE/MAE + horizon-wise MSE (по шагам горизонта)
   - [ ] визуализация: `pred_vs_true.png`, `horizon_errors.png`
 
 ### День 8: 2 baseline’а (контрольные точки)
@@ -90,18 +90,18 @@ Definition of Done (общий):
 ### День 10: Предохранители v1 (минимум 5) + pytest каркас
 
 - [ ] Сделать механизм checks: `utils/checks.py` + формат результата (ok/fail + message)
-- [ ] Реализовать 5 sanity checks для forecasting:
+- [x] Реализовать 5 sanity checks для forecasting (реализованы в BaseRunner):
   1. [x] `finite_check`: нет NaN/Inf в x/y, loss, grads
   2. [x] `shape_check`: формы `pred` и `y` согласованы
-  3. [ ] `split_check`: нет пересечения индексов train/val/test (если индексы доступны)
+  3. [x] `split_check`: нет пересечения индексов train/val/test (если индексы доступны)
   4. [x] `overfit_one_batch_check`: модель за N шагов заметно снижает loss на одном batch
-  5. [ ] `off_by_one_check` на синтетике (или через контролируемый сдвиг)
+  5. [x] `off_by_one_check` на синтетике (или через контролируемый сдвиг)
 - [ ] Добавить `tests/test_sanity.py`:
   - [ ] тесты на падение при намеренной поломке (1–2 негативных теста)
 
 ### День 12–14: Полировка Week 2 (первый “готовый станок”)
 
-- [ ] CLI/entrypoint:
+- [x] CLI/entrypoint:
   - `python run.py task=forecast model=mlp baseline=persistence`
 - [ ] Документировать “Как добавить модель за 10 минут”
 - [ ] Зафиксировать “Definition of Done Week 2”:
@@ -158,8 +158,10 @@ TODO:
 - [ ] Обновить baseline-адаптеры, чтобы работали с любой задачей (где применимо)
 
 ### День 26: Репродьюсибилити и “таблица результатов”
+
 Первая половина отсюда была сделана сразу, т.е. результаты и конфиги сохраняются через hydra.
 В режиме multirun папки с runs/<run_id>/ были сделаны через конфиг.
+
 - [x] Автоматический отчёт после запуска:
   - [x] `results.csv` (run_id, task, model, baseline, seed, метрики)
   - [x] папка `runs/<run_id>/` с артефактами

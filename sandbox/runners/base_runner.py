@@ -4,7 +4,7 @@ from typing import Dict, Mapping, Optional, Union
 
 import torch
 from omegaconf import DictConfig
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 
@@ -12,6 +12,7 @@ import copy
 import gc
 
 import json
+
 # Allow running this file directly:
 # `python sandbox/runner/base_runner.py`
 if __package__ is None or __package__ == "":
@@ -104,17 +105,15 @@ class BaseRunner:
         self.main_val_metric = self.eval_config["init"]["main_val_metric"]
 
         # annotate optimizer and scheduler
-        self.optimizer, self.scheduler = self.model.configure_optimizers(
-            self.config
-        )
+        self.optimizer, self.scheduler = self.model.configure_optimizers(self.config)
         self.metrics = self.task.configure_metrics(self.eval_config)
 
         self.early_stopping_counter = 0
 
         self.patience = self.train_config["early_stopping"]["patience"]
-        
+
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
-            
+
     @torch.no_grad()
     def eval(self, dataloader: DataLoader, eval_mode: str) -> Dict[str, float]:
         """Evaluate the model on a given dataloader.
@@ -216,8 +215,10 @@ class BaseRunner:
             if self.early_stopping_counter >= self.patience:
                 return True
         return False
-    
-    def save_metrics(self, metric_dict: Dict[str, float], destination_path: Union[str, Path]):
+
+    def save_metrics(
+        self, metric_dict: Dict[str, float], destination_path: Union[str, Path]
+    ):
         """Save metrics to a file.
 
         Args:
@@ -226,7 +227,7 @@ class BaseRunner:
         """
         with open(destination_path, "w") as f:
             json.dump(metric_dict, f)
-        
+
     def train(self, model, train_dl, val_dl):
         """Train the model for a configured number of epochs.
 
@@ -244,9 +245,7 @@ class BaseRunner:
         model.to(self.device)
         self.key_val_metric = self.eval_config["init"]["key_val_metric"]
         # Re-initialize optimizer and scheduler (optional, could reuse existing)
-        self.optimizer, self.scheduler = self.model.configure_optimizers(
-            self.config
-        )
+        self.optimizer, self.scheduler = self.model.configure_optimizers(self.config)
         key_val_metric_value = torch.inf
 
         # train dataloader is expected to exist
@@ -272,9 +271,9 @@ class BaseRunner:
                 # TODO: implement save_checkpoint and save_vaL_metrics
                 self.model.save_checkpoint(self.checkpoint_dir)
         self.save_metrics(best_metric_dict, Path(self.output_dir) / "val_metrics.json")
-                    
+
         return best_metric_dict
-    
+
     def load_best_checkpoint(self):
         """Load the best checkpoint from the checkpoint directory."""
         self.model.load_checkpoint(self.checkpoint_dir)
@@ -304,6 +303,13 @@ class BaseRunner:
         self.overfit_one_batch_check(self.train_dl)
         self.finite_dataset_check(self.train_dl, "Train")
         self.finite_grad_check(self.train_dl)
+        self.split_check(self.train_dl, self.val_dl, self.test_dl)
+        self.finite_model_output_check(self.train_dl, "Train")
+        self.finite_model_output_check(self.val_dl, "Val")
+        self.finite_model_output_check(self.test_dl, "Test")
+        self.off_by_one_check(self.train_dl, "Train")
+        self.off_by_one_check(self.val_dl, "Val")
+        self.off_by_one_check(self.test_dl, "Test")
 
     def model_forward_predict_check(self):
         """Check that the model has a forward method.
@@ -313,9 +319,9 @@ class BaseRunner:
         """
         assert hasattr(self.model, "forward"), "Model class must have a forward method"
         assert hasattr(self.model, "predict"), "Model class must have a predict method"
+        print("Model forward and predict method check passed")
 
-
-    def overfit_one_batch_check(self, train_dl: DataLoader, num_steps: int=200):
+    def overfit_one_batch_check(self, train_dl: DataLoader, num_steps: int = 200):
         """Check that the model is overfitting on one batch.
 
         Args:
@@ -340,15 +346,19 @@ class BaseRunner:
             loss[-1].backward()
             optimizer.step()
 
-        print(f"Initial loss: {loss[0]}, final loss: {loss[-1]}, ratio: {loss[-1] / loss[0]}")
+        print(
+            f"Initial loss: {loss[0]}, final loss: {loss[-1]}, ratio: {loss[-1] / loss[0]}"
+        )
         assert loss[-1] / loss[0] < 1e-3, "Model is not overfitting"
-        
+
         # force memory deallocation
         del model
         gc.collect()
         print("Overfitting check passed")
 
-    def finite_dataset_check(self, dataloader: DataLoader, dataloder_name: str="Train"):
+    def finite_dataset_check(
+        self, dataloader: DataLoader, dataloder_name: str = "Train"
+    ):
         """Check that the dataset is finite.
 
         Args:
@@ -358,20 +368,31 @@ class BaseRunner:
         print(f"Checking finite dataset for {dataloder_name} dataloader...")
         for batch in dataloader:
             if isinstance(batch, torch.Tensor):
-                assert torch.isfinite(batch).all(), f"{dataloder_name} dataloader contains non-finite values"
+                assert torch.isfinite(
+                    batch
+                ).all(), f"{dataloder_name} dataloader contains non-finite values"
             elif isinstance(batch, (list, tuple)):
                 for item in batch:
                     if isinstance(item, torch.Tensor):
-                        assert torch.isfinite(item).all(), f"{dataloder_name} dataloader contains non-finite values"
+                        assert torch.isfinite(
+                            item
+                        ).all(), (
+                            f"{dataloder_name} dataloader contains non-finite values"
+                        )
             elif isinstance(batch, dict):
                 for item in batch.values():
                     if isinstance(item, torch.Tensor):
-                        assert torch.isfinite(item).all(), f"{dataloder_name} dataloader contains non-finite values"
+                        assert torch.isfinite(
+                            item
+                        ).all(), (
+                            f"{dataloder_name} dataloader contains non-finite values"
+                        )
             else:
                 raise TypeError(f"Unsupported batch type: {type(batch)}")
+        print("Finite dataset check passed")
 
     def finite_grad_check(self, dataloader: DataLoader):
-        """"Check that the gradients are finite.
+        """ "Check that the gradients are finite.
 
         Args:
             dataloader (DataLoader): Dataloader to check.
@@ -391,7 +412,9 @@ class BaseRunner:
             loss.backward()
 
             for param in model.parameters():
-                assert torch.isfinite(param.grad).all(), f"Model yields non-finite gradients"
+                assert torch.isfinite(
+                    param.grad
+                ).all(), f"Model yields non-finite gradients"
 
         # imitate first epoch
         for batch in dataloader:
@@ -401,12 +424,15 @@ class BaseRunner:
             loss.backward()
 
             for param in model.parameters():
-                assert torch.isfinite(param.grad).all(), f"Model yields non-finite gradients"
+                assert torch.isfinite(
+                    param.grad
+                ).all(), f"Model yields non-finite gradients"
             optimizer.step()
         print("Finite gradients check passed")
-        
-    
-    def finite_model_output_check(self, dataloader: DataLoader, dataloder_name: str="Train"):
+
+    def finite_model_output_check(
+        self, dataloader: DataLoader, dataloder_name: str = "Train"
+    ):
         """Check that the model output is finite.
 
         Args:
@@ -419,8 +445,77 @@ class BaseRunner:
         model.eval()
         for batch in dataloader:
             output = model(batch)
-            assert torch.isfinite(output).all(), f"{dataloder_name} dataloader contains non-finite values"
+            assert torch.isfinite(
+                output
+            ).all(), f"{dataloder_name} dataloader contains non-finite values"
         print("Finite model output check passed")
+
+    def split_check(self, train_dl, val_dl, test_dl):
+        """Check that the train, validation, and test dataloaders are properly split.
+
+        Args:
+            train_dl (DataLoader): Training data loader.
+            val_dl (DataLoader): Validation data loader.
+            test_dl (DataLoader): Test data loader.
+        """
+        train_x_t = []
+        train_y_t = []
+        val_x_t = []
+        val_y_t = []
+        test_x_t = []
+        test_y_t = []
+        for batch in train_dl:
+            train_x_t.append(batch["x_t"])
+            train_y_t.append(batch["y_t"])
+
+        for batch in val_dl:
+            val_x_t.append(batch["x_t"])
+            val_y_t.append(batch["y_t"])
+
+        for batch in test_dl:
+            test_x_t.append(batch["x_t"])
+            test_y_t.append(batch["y_t"])
+        train_x_t = torch.cat(train_x_t, dim=0)
+        train_y_t = torch.cat(train_y_t, dim=0)
+        val_x_t = torch.cat(val_x_t, dim=0)
+        val_y_t = torch.cat(val_y_t, dim=0)
+        test_x_t = torch.cat(test_x_t, dim=0)
+        test_y_t = torch.cat(test_y_t, dim=0)
+
+        train_x_t = set(train_x_t.cpu().numpy().tolist())
+        train_y_t = set(train_y_t.cpu().numpy().tolist())
+        val_x_t = set(val_x_t.cpu().numpy().tolist())
+        val_y_t = set(val_y_t.cpu().numpy().tolist())
+        test_x_t = set(test_x_t.cpu().numpy().tolist())
+        test_y_t = set(test_y_t.cpu().numpy().tolist())
+
+        if (
+            len(train_x_t.intersection(val_x_t)) > 0
+            or len(train_x_t.intersection(test_x_t)) > 0
+            or len(val_x_t.intersection(test_x_t)) > 0
+        ):
+            raise ValueError(
+                "Overlap found in timestamps between train, validation, and test sets"
+            )
+        print("Split check passed")
+
+        # check that there is no overlap between train, val, and test sets
+
+    def off_by_one_check(self, dataset: Dataset):
+        """Check that the model output is not off by one.
+
+        Args:
+            dataloader (DataLoader): Dataloader to check.
+            dataloder_name (str): Name of the dataloader.
+        """
+        for i in range(len(dataset) - 1):
+            batch = dataset[i]
+            x_t = batch["x_t"]
+            y_t = batch["y_t"]
+            assert (
+                x_t[-1] < y_t[0]
+            ), "Off-by-one error detected: last timestamp or index of x_t is not less than first timestamp of y_t"
+        print("Off-by-one check passed")
 
 
 # micro-test for all functions.
@@ -565,23 +660,29 @@ if __name__ == "__main__":
 
         # Overfit check with a simple linear model (to ensure it passes)
         print("Running overfit check with a simple linear model...")
+
         # Create a simple linear model that can overfit quickly
         class SimpleLinear(torch.nn.Module):
             def __init__(self):
                 super().__init__()
                 self.linear = torch.nn.Linear(1, 1)
+
             def forward(self, batch):
                 if isinstance(batch, (list, tuple)):
                     x = batch[0]
                 else:
                     x = batch
                 return self.linear(x)
+
             def predict(self, batch):
                 return self(batch)
+
             def configure_optimizers(self, cfg):
                 # Use a high fixed learning rate for quick overfitting
                 optimizer = torch.optim.Adam(self.parameters(), lr=0.5)
-                scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.9)
+                scheduler = torch.optim.lr_scheduler.StepLR(
+                    optimizer, step_size=1, gamma=0.9
+                )
                 return optimizer, scheduler
 
         # Create a simple dataset where y = 2*x (easy to fit)
@@ -608,4 +709,4 @@ if __name__ == "__main__":
 
         print("All basic tests passed.")
 
-# 
+#
