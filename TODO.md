@@ -96,8 +96,11 @@ Definition of Done (общий):
   3. [x] `split_check`: нет пересечения индексов train/val/test (если индексы доступны)
   4. [x] `overfit_one_batch_check`: модель за N шагов заметно снижает loss на одном batch
   5. [x] `off_by_one_check` на синтетике (или через контролируемый сдвиг)
-- [ ] Добавить `tests/test_sanity.py`:
+- [x] Добавить `tests/test_sanity.py`:
   - [ ] тесты на падение при намеренной поломке (1–2 негативных теста)
+
+  1. [ ] перенести off_by_one_check в ForecastingTask.
+  2. [ ] перенести split_check и finite_check в ForecastingTask.
 
 ### День 12–14: Полировка Week 2 (первый “готовый станок”)
 
