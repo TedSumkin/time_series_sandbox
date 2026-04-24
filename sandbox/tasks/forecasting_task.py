@@ -59,9 +59,7 @@ class LocalDataset(Dataset):
             raise ValueError("features must be a 2D tensor with shape (N, F)")
         if self.target.ndim != 1:
             raise ValueError("target must be a 1D tensor with shape (N,)")
-        if not (
-            len(self.timestamps) == len(self.features) == len(self.target)
-        ):
+        if not (len(self.timestamps) == len(self.features) == len(self.target)):
             raise ValueError(
                 "timestamps, features, and target must have the same length"
             )
@@ -93,9 +91,13 @@ class BasicSlidingWindowDataset(Dataset):
         horizon: int,
         start_idx: int = 0,
         end_idx: int | None = None,
+        part: str = "train",
     ) -> None:
         super().__init__()
 
+        if part not in {"train", "val", "test"}:
+            raise ValueError("part must be one of 'train', 'val', or 'test'")
+        self.part = part
         if stride <= 0:
             raise ValueError("stride must be > 0")
         if context_length <= 0:
@@ -130,7 +132,9 @@ class BasicSlidingWindowDataset(Dataset):
     def _collect_data(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         dataset_length = len(self.data)
         if dataset_length == 0:
-            raise ValueError("Sliding window dataset cannot be built from an empty dataset.")
+            raise ValueError(
+                "Sliding window dataset cannot be built from an empty dataset."
+            )
 
         timestamps = []
         inputs = []
@@ -162,6 +166,7 @@ class BasicSlidingWindowDataset(Dataset):
             "y": target_window,
             "x_t": input_timestamp_window,
             "y_t": target_timestamp_window,
+            "meta": {"split_part": self.part},
         }
 
 
@@ -265,7 +270,11 @@ class ForecastingTask(nn.Module):
                 "Chronological split produced an empty train, val, or test partition."
             )
 
-        return slice(0, train_end), slice(train_end, val_end), slice(val_end, dataset_length)
+        return (
+            slice(0, train_end),
+            slice(train_end, val_end),
+            slice(val_end, dataset_length),
+        )
 
     def _fit_normalization_stats(
         self,
@@ -283,21 +292,25 @@ class ForecastingTask(nn.Module):
 
         if normalization_type == "standard":
             stats["features_center"] = train_features.mean(dim=0)
-            stats["features_scale"] = train_features.std(dim=0, unbiased=False).clamp_min(eps)
+            stats["features_scale"] = train_features.std(
+                dim=0, unbiased=False
+            ).clamp_min(eps)
             stats["target_center"] = train_targets.mean()
             stats["target_scale"] = train_targets.std(unbiased=False).clamp_min(eps)
             if normalize_timestamps:
                 stats["timestamps_center"] = train_timestamps.mean()
-                stats["timestamps_scale"] = train_timestamps.std(unbiased=False).clamp_min(eps)
+                stats["timestamps_scale"] = train_timestamps.std(
+                    unbiased=False
+                ).clamp_min(eps)
         else:
             stats["features_center"] = train_features.min(dim=0).values
             stats["features_scale"] = (
                 train_features.max(dim=0).values - train_features.min(dim=0).values
             ).clamp_min(eps)
             stats["target_center"] = train_targets.min()
-            stats["target_scale"] = (train_targets.max() - train_targets.min()).clamp_min(
-                eps
-            )
+            stats["target_scale"] = (
+                train_targets.max() - train_targets.min()
+            ).clamp_min(eps)
             if normalize_timestamps:
                 stats["timestamps_center"] = train_timestamps.min()
                 stats["timestamps_scale"] = (
@@ -318,15 +331,21 @@ class ForecastingTask(nn.Module):
         if normalization_type == "none":
             return timestamps, features, targets
 
-        norm_features = (features - stats["features_center"]) / stats["features_scale"]
-        norm_targets = (targets - stats["target_center"]) / stats["target_scale"]
-        norm_timestamps = timestamps
+        if normalization_type in {"standard", "minmax"}:
+            norm_features = (features - stats["features_center"]) / stats[
+                "features_scale"
+            ]
+            norm_targets = (targets - stats["target_center"]) / stats["target_scale"]
+            norm_timestamps = timestamps
 
-        if normalize_timestamps:
-            norm_timestamps = (
-                timestamps - stats["timestamps_center"]
-            ) / stats["timestamps_scale"]
-
+            if normalize_timestamps:
+                norm_timestamps = (timestamps - stats["timestamps_center"]) / stats[
+                    "timestamps_scale"
+                ]
+        else:
+            raise NotImplementedError(
+                f"Unsupported normalization type: {normalization_type}"
+            )
         return norm_timestamps, norm_features, norm_targets
 
     def build_dataloaders(self, cfg) -> Tuple[DataLoader, DataLoader, DataLoader]:
