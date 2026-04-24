@@ -1,15 +1,12 @@
 import sys
 from pathlib import Path
-from typing import Dict, Mapping, Optional, Union
+from typing import Dict, Mapping, Union
 
 import torch
 from omegaconf import DictConfig
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
-
-import copy
-import gc
 
 import json
 
@@ -20,7 +17,8 @@ if __package__ is None or __package__ == "":
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
 
-from sandbox.contracts import BatchLike, TaskProtocol, ModelProtocol
+from sandbox.contracts import TaskProtocol, ModelProtocol
+from sandbox.utils import check as sanity_check
 
 
 class BaseRunner:
@@ -299,17 +297,18 @@ class BaseRunner:
             - Dataset is finite
             - Gradients are finite
         """
-        self.model_forward_predict_check()
-        self.overfit_one_batch_check(self.train_dl)
-        self.finite_dataset_check(self.train_dl, "Train")
-        self.finite_grad_check(self.train_dl)
-        self.split_check(self.train_dl, self.val_dl, self.test_dl)
-        self.finite_model_output_check(self.train_dl, "Train")
-        self.finite_model_output_check(self.val_dl, "Val")
-        self.finite_model_output_check(self.test_dl, "Test")
-        self.off_by_one_check(self.train_dl, "Train")
-        self.off_by_one_check(self.val_dl, "Val")
-        self.off_by_one_check(self.test_dl, "Test")
+        if self.train_dl is None:
+            raise ValueError("train_dl must be set before running checks")
+
+        return sanity_check.run_default_checks(
+            model=self.model,
+            task=self.task,
+            train_dl=self.train_dl,
+            val_dl=self.val_dl,
+            test_dl=self.test_dl,
+            train_config=self.train_config,
+            device=self.device,
+        )
 
     def model_forward_predict_check(self):
         """Check that the model has a forward method.
@@ -317,9 +316,7 @@ class BaseRunner:
         Args:
             model (nn.Module): Model to check.
         """
-        assert hasattr(self.model, "forward"), "Model class must have a forward method"
-        assert hasattr(self.model, "predict"), "Model class must have a predict method"
-        print("Model forward and predict method check passed")
+        return sanity_check.model_forward_predict_check(self.model)
 
     def overfit_one_batch_check(self, train_dl: DataLoader, num_steps: int = 200):
         """Check that the model is overfitting on one batch.
@@ -328,33 +325,14 @@ class BaseRunner:
             train_dl (DataLoader): Training data loader.
             num_steps (int): Number of steps to train.
         """
-        print("Checking overfitting on one batch...")
-        model = copy.deepcopy(self.model)
-        model.to(self.device)
-        model.train()
-        optimizer, scheduler = model.configure_optimizers(self.train_config)
-        loss_fn = self.task.loss_fn
-
-        for batch in train_dl:
-            break
-        loss = []
-        for i in range(num_steps):
-            optimizer.zero_grad()
-            output = model(batch)
-
-            loss.append(loss_fn(output, batch))
-            loss[-1].backward()
-            optimizer.step()
-
-        print(
-            f"Initial loss: {loss[0]}, final loss: {loss[-1]}, ratio: {loss[-1] / loss[0]}"
+        return sanity_check.overfit_one_batch_check(
+            model=self.model,
+            task=self.task,
+            train_dl=train_dl,
+            train_config=self.train_config,
+            device=self.device,
+            num_steps=num_steps,
         )
-        assert loss[-1] / loss[0] < 1e-3, "Model is not overfitting"
-
-        # force memory deallocation
-        del model
-        gc.collect()
-        print("Overfitting check passed")
 
     def finite_dataset_check(
         self, dataloader: DataLoader, dataloder_name: str = "Train"
@@ -365,31 +343,7 @@ class BaseRunner:
             dataloader (DataLoader): Dataloader to check.
             dataloder_name (str): Name of the dataloader.
         """
-        print(f"Checking finite dataset for {dataloder_name} dataloader...")
-        for batch in dataloader:
-            if isinstance(batch, torch.Tensor):
-                assert torch.isfinite(
-                    batch
-                ).all(), f"{dataloder_name} dataloader contains non-finite values"
-            elif isinstance(batch, (list, tuple)):
-                for item in batch:
-                    if isinstance(item, torch.Tensor):
-                        assert torch.isfinite(
-                            item
-                        ).all(), (
-                            f"{dataloder_name} dataloader contains non-finite values"
-                        )
-            elif isinstance(batch, dict):
-                for item in batch.values():
-                    if isinstance(item, torch.Tensor):
-                        assert torch.isfinite(
-                            item
-                        ).all(), (
-                            f"{dataloder_name} dataloader contains non-finite values"
-                        )
-            else:
-                raise TypeError(f"Unsupported batch type: {type(batch)}")
-        print("Finite dataset check passed")
+        return sanity_check.finite_dataset_check(dataloader, dataloder_name)
 
     def finite_grad_check(self, dataloader: DataLoader):
         """ "Check that the gradients are finite.
@@ -397,38 +351,13 @@ class BaseRunner:
         Args:
             dataloader (DataLoader): Dataloader to check.
         """
-
-        print("Checking finite gradients...")
-        model = copy.deepcopy(self.model)
-        model.train()
-        model.to(self.device)
-
-        optimizer, scheduler = model.configure_optimizers(self.train_config)
-        loss_fn = self.task.loss_fn
-        for batch in dataloader:
-            optimizer.zero_grad()
-            output = model(batch)
-            loss = loss_fn(output, batch)
-            loss.backward()
-
-            for param in model.parameters():
-                assert torch.isfinite(
-                    param.grad
-                ).all(), f"Model yields non-finite gradients"
-
-        # imitate first epoch
-        for batch in dataloader:
-            optimizer.zero_grad()
-            output = model(batch)
-            loss = loss_fn(output, batch)
-            loss.backward()
-
-            for param in model.parameters():
-                assert torch.isfinite(
-                    param.grad
-                ).all(), f"Model yields non-finite gradients"
-            optimizer.step()
-        print("Finite gradients check passed")
+        return sanity_check.finite_grad_check(
+            model=self.model,
+            task=self.task,
+            dataloader=dataloader,
+            train_config=self.train_config,
+            device=self.device,
+        )
 
     def finite_model_output_check(
         self, dataloader: DataLoader, dataloder_name: str = "Train"
@@ -439,16 +368,12 @@ class BaseRunner:
             dataloader (DataLoader): Dataloader to check.
             dataloder_name (str): Name of the dataloader.
         """
-        print(f"Checking finite model output for {dataloder_name} dataloader...")
-        model = copy.deepcopy(self.model)
-        model.to(self.device)
-        model.eval()
-        for batch in dataloader:
-            output = model(batch)
-            assert torch.isfinite(
-                output
-            ).all(), f"{dataloder_name} dataloader contains non-finite values"
-        print("Finite model output check passed")
+        return sanity_check.finite_model_output_check(
+            model=self.model,
+            dataloader=dataloader,
+            device=self.device,
+            dataloader_name=dataloder_name,
+        )
 
     def split_check(self, train_dl, val_dl, test_dl):
         """Check that the train, validation, and test dataloaders are properly split.
@@ -458,255 +383,13 @@ class BaseRunner:
             val_dl (DataLoader): Validation data loader.
             test_dl (DataLoader): Test data loader.
         """
-        train_x_t = []
-        train_y_t = []
-        val_x_t = []
-        val_y_t = []
-        test_x_t = []
-        test_y_t = []
-        for batch in train_dl:
-            train_x_t.append(batch["x_t"])
-            train_y_t.append(batch["y_t"])
+        return sanity_check.split_check(train_dl, val_dl, test_dl)
 
-        for batch in val_dl:
-            val_x_t.append(batch["x_t"])
-            val_y_t.append(batch["y_t"])
-
-        for batch in test_dl:
-            test_x_t.append(batch["x_t"])
-            test_y_t.append(batch["y_t"])
-        train_x_t = torch.cat(train_x_t, dim=0)
-        train_y_t = torch.cat(train_y_t, dim=0)
-        val_x_t = torch.cat(val_x_t, dim=0)
-        val_y_t = torch.cat(val_y_t, dim=0)
-        test_x_t = torch.cat(test_x_t, dim=0)
-        test_y_t = torch.cat(test_y_t, dim=0)
-
-        train_x_t = set(train_x_t.cpu().numpy().tolist())
-        train_y_t = set(train_y_t.cpu().numpy().tolist())
-        val_x_t = set(val_x_t.cpu().numpy().tolist())
-        val_y_t = set(val_y_t.cpu().numpy().tolist())
-        test_x_t = set(test_x_t.cpu().numpy().tolist())
-        test_y_t = set(test_y_t.cpu().numpy().tolist())
-
-        if (
-            len(train_x_t.intersection(val_x_t)) > 0
-            or len(train_x_t.intersection(test_x_t)) > 0
-            or len(val_x_t.intersection(test_x_t)) > 0
-        ):
-            raise ValueError(
-                "Overlap found in timestamps between train, validation, and test sets"
-            )
-        print("Split check passed")
-
-        # check that there is no overlap between train, val, and test sets
-
-    def off_by_one_check(self, dataset: Dataset):
-        """Check that the model output is not off by one.
+    def off_by_one_check(self, data, dataloader_name: str = "Dataset"):
+        """Check that forecasting target windows are not off by one.
 
         Args:
-            dataloader (DataLoader): Dataloader to check.
+            data (DataLoader): Dataloader or dataset to check.
             dataloder_name (str): Name of the dataloader.
         """
-        for i in range(len(dataset) - 1):
-            batch = dataset[i]
-            x_t = batch["x_t"]
-            y_t = batch["y_t"]
-            assert (
-                x_t[-1] < y_t[0]
-            ), "Off-by-one error detected: last timestamp or index of x_t is not less than first timestamp of y_t"
-        print("Off-by-one check passed")
-
-
-# micro-test for all functions.
-if __name__ == "__main__":
-    import sys
-    import tempfile
-    import torch
-    import torch.nn as nn
-    from torch.utils.data import DataLoader, TensorDataset
-    from torch.utils.tensorboard import SummaryWriter
-    from pathlib import Path
-
-    # ---- Simple model (tiny MLP) ----
-    class TinyMLP(nn.Module):
-        def __init__(self, input_dim=4, output_dim=1, horizon=1):
-            super().__init__()
-            self.net = nn.Sequential(
-                nn.Linear(input_dim, 8), nn.ReLU(), nn.Linear(8, horizon * output_dim)
-            )
-            self.horizon = horizon
-            self.output_dim = output_dim
-
-        def forward(self, batch):
-            # Assume batch is a tensor of shape (B, input_dim)
-            if isinstance(batch, dict):
-                x = batch["x"]
-            elif isinstance(batch, (list, tuple)):
-                x = batch[0]
-            else:
-                x = batch
-            out = self.net(x)
-            return out.view(out.shape[0], self.horizon, self.output_dim)
-
-        def predict(self, batch):
-            return self(batch)
-
-        def configure_optimizers(self, cfg):
-            lr = cfg.get("lr", 0.001)
-            optimizer = torch.optim.Adam(self.parameters(), lr=lr)
-            scheduler = torch.optim.lr_scheduler.StepLR(
-                optimizer, step_size=1, gamma=0.9
-            )
-            return optimizer, scheduler
-
-    # ---- Simple task ----
-    class DummyTask:
-        def loss_fn(self, prediction, batch):
-            # Dummy loss: MSE between prediction and a dummy target
-            if isinstance(batch, dict):
-                target = batch.get("y", torch.zeros_like(prediction))
-            elif isinstance(batch, (list, tuple)) and len(batch) > 1:
-                target = batch[1]
-            else:
-                target = torch.zeros_like(prediction)
-            return nn.functional.mse_loss(prediction, target)
-
-        def configure_metrics(self, cfg):
-            # Return a single metric that computes MAE
-            def mae(prediction, batch):
-                if isinstance(batch, dict):
-                    target = batch.get("y", torch.zeros_like(prediction))
-                elif isinstance(batch, (list, tuple)) and len(batch) > 1:
-                    target = batch[1]
-                else:
-                    target = torch.zeros_like(prediction)
-                return torch.mean(torch.abs(prediction - target))
-
-            return {"mae": mae}
-
-        def build_dataloaders(self, cfg):
-            # Not needed for this test
-            raise NotImplementedError()
-
-    # ---- Create dummy data ----
-    batch_size = 4
-    seq_len = 10
-    input_dim = 4
-    output_dim = 1
-    horizon = 1
-
-    # Random features and targets
-    X = torch.randn(batch_size * seq_len, input_dim)
-    y = torch.randn(batch_size * seq_len, horizon, output_dim)
-    dataset = TensorDataset(X, y)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-
-    # ---- Configuration ----
-    config = {
-        "train": {
-            "device": "cpu",
-            "epochs": 2,
-            "lr": 0.01,
-            "early_stopping": {"patience": 3},
-        },
-        "eval": {"init": {"main_val_metric": "loss", "key_val_metric": "mae"}},
-        "test": {},
-    }
-
-    # ---- Temporary directory for logs ----
-    with tempfile.TemporaryDirectory() as tmpdir:
-        logger = SummaryWriter(log_dir=tmpdir)
-        model = TinyMLP(input_dim=input_dim, output_dim=output_dim, horizon=horizon)
-        task = DummyTask()
-        runner = BaseRunner(
-            config=config,
-            logger=logger,
-            output_dir=tmpdir,
-            task=task,
-            model=model,
-        )
-
-        print("BaseRunner instantiated successfully.")
-
-        # ---- Evaluation test ----
-        eval_results = runner.eval(dataloader, "val")
-        print(f"Evaluation results: {eval_results}")
-
-        # ---- Training test (just one epoch) ----
-        # Note: we need to set checkpoint_dir attribute (used in train)
-        runner.checkpoint_dir = Path(tmpdir) / "checkpoints"
-        runner.checkpoint_dir.mkdir(parents=True, exist_ok=True)
-        best_metrics = runner.train(model, dataloader, dataloader)
-        print(f"Training completed. Best metrics: {best_metrics}")
-
-        # ---- Test test ----
-        runner.test(dataloader)
-        print("Test executed.")
-
-        # ---- Sanity checks ----
-        runner.train_dl = dataloader
-        print("Running finite dataset check...")
-        runner.finite_dataset_check(dataloader, "Test")
-        print("Finite dataset check passed.")
-
-        print("Running finite gradient check...")
-        runner.finite_grad_check(dataloader)
-        print("Finite gradient check passed.")
-
-        print("Running finite model output check...")
-        runner.finite_model_output_check(dataloader, "Test")
-        print("Finite model output check passed.")
-
-        # Overfit check with a simple linear model (to ensure it passes)
-        print("Running overfit check with a simple linear model...")
-
-        # Create a simple linear model that can overfit quickly
-        class SimpleLinear(torch.nn.Module):
-            def __init__(self):
-                super().__init__()
-                self.linear = torch.nn.Linear(1, 1)
-
-            def forward(self, batch):
-                if isinstance(batch, (list, tuple)):
-                    x = batch[0]
-                else:
-                    x = batch
-                return self.linear(x)
-
-            def predict(self, batch):
-                return self(batch)
-
-            def configure_optimizers(self, cfg):
-                # Use a high fixed learning rate for quick overfitting
-                optimizer = torch.optim.Adam(self.parameters(), lr=0.5)
-                scheduler = torch.optim.lr_scheduler.StepLR(
-                    optimizer, step_size=1, gamma=0.9
-                )
-                return optimizer, scheduler
-
-        # Create a simple dataset where y = 2*x (easy to fit)
-        X_simple = torch.randn(4, 1)
-        y_simple = X_simple * 2
-        dataset_simple = TensorDataset(X_simple, y_simple)
-        dataloader_simple = DataLoader(dataset_simple, batch_size=4, shuffle=False)
-        model_simple = SimpleLinear()
-        runner_simple = BaseRunner(
-            config=config,
-            logger=logger,
-            output_dir=tmpdir,
-            task=task,
-            model=model_simple,
-        )
-        runner_simple.train_dl = dataloader_simple
-        runner_simple.overfit_one_batch_check(dataloader_simple, num_steps=200)
-        print("Overfit check passed.")
-
-        # Run full run_checks on the simple model
-        print("Running run_checks...")
-        runner_simple.run_checks()
-        print("All sanity checks passed.")
-
-        print("All basic tests passed.")
-
-#
+        return sanity_check.off_by_one_check(data, dataloader_name)
