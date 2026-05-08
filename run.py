@@ -71,6 +71,13 @@ def main(cfg: DictConfig) -> str:
         runner.val_dl = val_dl
         runner.test_dl = test_dl
 
+        if cfg.get("sanity_run", False):
+            print("Sanity run enabled - skipping training and testing.")
+            print("Performing sanity checks on model and dataloaders...")
+            check_results = runner.run_checks()
+            print(f"Sanity check results: {check_results}")
+            return str(out_dir)
+
         best_val_metrics = runner.train(model=model, train_dl=train_dl, val_dl=val_dl)
         
         runner.load_best_checkpoint()

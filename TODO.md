@@ -62,7 +62,7 @@ Definition of Done (общий):
   - [x] сохранение best checkpoint
   - [x] сохранение `metrics.json`/`metrics.csv`
   - [x] сохранение `config.yaml` + `seed` -- уже сохранено через декоратор @hydra.main
-- [ ] Добавить базовое логирование (stdout + файл `run.log`) [Забит болт, т.к. не вижу смысла]
+- [x] Добавить базовое логирование (stdout + файл `run.log`) [Забит болт, т.к. не вижу смысла]
 - [x] Добавить “sanity run” режим: `--sanity_steps N` (например 100):
   - [x] Добавить функционал в BaseRunner (Добавлено в виде формулы)
 
@@ -89,7 +89,7 @@ Definition of Done (общий):
 
 ### День 10: Предохранители v1 (минимум 5) + pytest каркас
 
-- [ ] Сделать механизм checks: `utils/checks.py` + формат результата (ok/fail + message)
+- [x] Сделать механизм checks: `utils/checks.py` + формат результата (ok/fail + message)
 - [x] Реализовать 5 sanity checks для forecasting (реализованы в BaseRunner):
   1. [x] `finite_check`: нет NaN/Inf в x/y, loss, grads
   2. [x] `shape_check`: формы `pred` и `y` согласованы

@@ -27,7 +27,6 @@ from torch.utils.data import DataLoader, Dataset
 
 from ..utils.dataset_normalization import DatasetExtractor
 
-
 TensorLike = Union[np.ndarray, torch.Tensor]
 
 
@@ -92,6 +91,7 @@ class BasicSlidingWindowDataset(Dataset):
         start_idx: int = 0,
         end_idx: int | None = None,
         part: str = "train",
+        device: str = "cpu",
     ) -> None:
         super().__init__()
 
@@ -114,6 +114,9 @@ class BasicSlidingWindowDataset(Dataset):
 
         self._configure_windows()
         self.timestamps, self.inputs, self.targets = self._collect_data()
+        self.timestamps = self.timestamps.to(device)
+        self.inputs = self.inputs.to(device)
+        self.targets = self.targets.to(device)
 
     def _configure_windows(self) -> None:
         last_start = self.end_idx - self.context_length - self.horizon + 1
@@ -379,7 +382,7 @@ class ForecastingTask(nn.Module):
         normalization_type = self._instantiate_scaler(
             str(normalization_cfg.get("type", "none"))
         )
-        normalize_timestamps = bool(normalization_cfg.get("timestamps", False))
+        normalize_timestamps = bool(normalization_cfg.get("timestamps", True))
 
         norm_stats = self._fit_normalization_stats(
             train_timestamps,
@@ -426,23 +429,27 @@ class ForecastingTask(nn.Module):
         context_length = int(window_cfg.get("context_length", 24))
         horizon = int(window_cfg.get("horizon", 1))
 
+        device = cfg.get("train", {}).get("device", "cpu")
         train_dataset = BasicSlidingWindowDataset(
             train_rows,
             stride=stride,
             context_length=context_length,
             horizon=horizon,
+            device=device,
         )
         val_dataset = BasicSlidingWindowDataset(
             val_rows,
             stride=stride,
             context_length=context_length,
             horizon=horizon,
+            device=device,
         )
         test_dataset = BasicSlidingWindowDataset(
             test_rows,
             stride=stride,
             context_length=context_length,
             horizon=horizon,
+            device=device,
         )
 
         dataloader_cfg = self.config.get("dataloader", {})

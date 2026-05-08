@@ -68,6 +68,7 @@ class BaseRunner:
                 and data semantics.
             model (ModelProtocol): Model object with forward, predict, and
                 configure_optimizers methods.
+            sanity_run_flag (bool): flag of sanity run mode.
 
         Raises:
             KeyError: If required configuration keys are missing.
@@ -80,7 +81,6 @@ class BaseRunner:
         self.model = model
         self.config = config
         self.task = task
-
         # Establish device to use in the experiment
         self.device = config["train"]["device"]
 
@@ -299,6 +299,10 @@ class BaseRunner:
         """
         if self.train_dl is None:
             raise ValueError("train_dl must be set before running checks")
+        if self.val_dl is None:
+            raise ValueError("val_dl must be set before running checks")
+        if self.test_dl is None:
+            raise ValueError("test_dl must be set before running checks")
 
         return sanity_check.run_default_checks(
             model=self.model,
@@ -309,87 +313,3 @@ class BaseRunner:
             train_config=self.train_config,
             device=self.device,
         )
-
-    def model_forward_predict_check(self):
-        """Check that the model has a forward method.
-
-        Args:
-            model (nn.Module): Model to check.
-        """
-        return sanity_check.model_forward_predict_check(self.model)
-
-    def overfit_one_batch_check(self, train_dl: DataLoader, num_steps: int = 200):
-        """Check that the model is overfitting on one batch.
-
-        Args:
-            train_dl (DataLoader): Training data loader.
-            num_steps (int): Number of steps to train.
-        """
-        return sanity_check.overfit_one_batch_check(
-            model=self.model,
-            task=self.task,
-            train_dl=train_dl,
-            train_config=self.train_config,
-            device=self.device,
-            num_steps=num_steps,
-        )
-
-    def finite_dataset_check(
-        self, dataloader: DataLoader, dataloder_name: str = "Train"
-    ):
-        """Check that the dataset is finite.
-
-        Args:
-            dataloader (DataLoader): Dataloader to check.
-            dataloder_name (str): Name of the dataloader.
-        """
-        return sanity_check.finite_dataset_check(dataloader, dataloder_name)
-
-    def finite_grad_check(self, dataloader: DataLoader):
-        """ "Check that the gradients are finite.
-
-        Args:
-            dataloader (DataLoader): Dataloader to check.
-        """
-        return sanity_check.finite_grad_check(
-            model=self.model,
-            task=self.task,
-            dataloader=dataloader,
-            train_config=self.train_config,
-            device=self.device,
-        )
-
-    def finite_model_output_check(
-        self, dataloader: DataLoader, dataloder_name: str = "Train"
-    ):
-        """Check that the model output is finite.
-
-        Args:
-            dataloader (DataLoader): Dataloader to check.
-            dataloder_name (str): Name of the dataloader.
-        """
-        return sanity_check.finite_model_output_check(
-            model=self.model,
-            dataloader=dataloader,
-            device=self.device,
-            dataloader_name=dataloder_name,
-        )
-
-    def split_check(self, train_dl, val_dl, test_dl):
-        """Check that the train, validation, and test dataloaders are properly split.
-
-        Args:
-            train_dl (DataLoader): Training data loader.
-            val_dl (DataLoader): Validation data loader.
-            test_dl (DataLoader): Test data loader.
-        """
-        return sanity_check.split_check(train_dl, val_dl, test_dl)
-
-    def off_by_one_check(self, data, dataloader_name: str = "Dataset"):
-        """Check that forecasting target windows are not off by one.
-
-        Args:
-            data (DataLoader): Dataloader or dataset to check.
-            dataloder_name (str): Name of the dataloader.
-        """
-        return sanity_check.off_by_one_check(data, dataloader_name)
