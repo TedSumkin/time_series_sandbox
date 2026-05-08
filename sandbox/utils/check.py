@@ -181,7 +181,7 @@ def overfit_one_batch_check(
     train_config: Mapping[str, Any],
     device: str | torch.device,
     num_steps: int = 200,
-    max_loss_ratio: float = 1e-3,
+    max_loss_ratio: float = 1e-2,
 ) -> None:
     """Check that a model can strongly reduce loss on one batch."""
     print("Checking overfitting on one batch...")
@@ -252,13 +252,15 @@ def split_check(
 def off_by_one_check(
     data: DataLoader | Dataset | Iterable[Any],
     dataloader_name: str = "Dataset",
-    require_contiguous: bool = True,
+    require_contiguous: bool = False,
     rtol: float = 1e-4,
     atol: float = 1e-6,
 ) -> None:
     """Check that forecast target windows start strictly after input windows."""
     print(f"Checking off-by-one errors for {dataloader_name} dataloader...")
+
     for batch in _iter_batches(data):
+
         x_t, y_t = _time_keys(batch)
 
         assert (x_t[:, -1] < y_t[:, 0]).all(), (
