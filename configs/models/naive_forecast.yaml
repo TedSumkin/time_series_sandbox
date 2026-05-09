@@ -1,0 +1,2 @@
+_target_: sandbox.models.forecasting_baselines.NaiveLastValueModel
+horizon: ${tasks.config.window.horizon}

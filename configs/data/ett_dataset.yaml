@@ -1,3 +1,4 @@
 dataset:
   _target_: sandbox.datasets.ett_datasets.ETTDataset
   subdataset: h1
+  predict_ot_only: true

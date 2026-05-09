@@ -31,6 +31,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
+
 class DatasetExtractor:
     """Extract timestamp, feature, and target tensors from a dataset.
 
@@ -45,10 +46,13 @@ class DatasetExtractor:
     entire content as tensors or NumPy arrays.
     """
 
-    def __init__(self, dataset: Dataset,
-                 feature_attr: str = None,
-                 target_attr: str = None,
-                 timestamp_attr: str = None):
+    def __init__(
+        self,
+        dataset: Dataset,
+        feature_attr: str = None,
+        target_attr: str = None,
+        timestamp_attr: str = None,
+    ):
         """Store dataset references and extraction metadata.
 
         Args:
@@ -66,7 +70,6 @@ class DatasetExtractor:
         self.feature_attr = feature_attr
         self.target_attr = target_attr
         self.timestamp_attr = timestamp_attr
-        
 
     def extract_data(self):
         """Return timestamps, inputs, and targets as torch tensors.
@@ -89,14 +92,17 @@ class DatasetExtractor:
         if self.dataset is None:
             raise ValueError("Dataset is not provided to the extractor.")
 
-        if self.feature_attr is None or self.target_attr is None or self.timestamp_attr is None:
+        if (
+            self.feature_attr is None
+            or self.target_attr is None
+            or self.timestamp_attr is None
+        ):
             # Fallback mode: we do not know where the full arrays live on the
             # dataset, so we reconstruct them by iterating over all samples.
             # This path is slower, but it is generic and works with any dataset
             # that returns `(timestamp, features, target)` from `__getitem__`.
             print(
-                "Feature, target, or timestamp attribute is not specified in "
-                "data extractor. Returning raw dataset output."
+                "Feature, target, or timestamp attribute is not specified in Data extractor init function. Returning raw dataset output."
             )
             timestamps = []
             inputs = []
@@ -114,9 +120,15 @@ class DatasetExtractor:
             # Fast path: extract arrays directly from dataset attributes.
             # This avoids Python-level iteration and is preferable for datasets
             # that already expose raw storage such as `dataset.data`.
-            assert hasattr(self.dataset, self.feature_attr), f"Dataset does not have the specified feature attribute: {self.feature_attr}"
-            assert hasattr(self.dataset, self.target_attr), f"Dataset does not have the specified target attribute: {self.target_attr}"
-            assert hasattr(self.dataset, self.timestamp_attr), f"Dataset does not have the specified timestamp attribute: {self.timestamp_attr}"
+            assert hasattr(
+                self.dataset, self.feature_attr
+            ), f"Dataset does not have the specified feature attribute: {self.feature_attr}"
+            assert hasattr(
+                self.dataset, self.target_attr
+            ), f"Dataset does not have the specified target attribute: {self.target_attr}"
+            assert hasattr(
+                self.dataset, self.timestamp_attr
+            ), f"Dataset does not have the specified timestamp attribute: {self.timestamp_attr}"
             timestamps = getattr(self.dataset, self.timestamp_attr)
             inputs = getattr(self.dataset, self.feature_attr)
             targets = getattr(self.dataset, self.target_attr)
@@ -135,6 +147,7 @@ class DatasetExtractor:
 
 
 if __name__ == "__main__":
+
     class DummyAttributeDataset(Dataset):
         """Dataset exposing full arrays via attributes.
 
@@ -163,7 +176,6 @@ if __name__ == "__main__":
                 torch.tensor(self.data[idx]),
                 torch.tensor(self.target[idx]),
             )
-
 
     class DummyIterativeDataset(Dataset):
         """Dataset exposing samples only through `__getitem__`.
@@ -196,7 +208,6 @@ if __name__ == "__main__":
 
         def __getitem__(self, idx: int):
             return self.samples[idx]
-
 
     print("Running DatasetExtractor self-tests...")
 

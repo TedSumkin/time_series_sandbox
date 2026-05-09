@@ -81,6 +81,12 @@ class BaseRunner:
         self.model = model
         self.config = config
         self.task = task
+
+        # check if the model is trainable
+        self.is_trainable = bool(len(list(self.model.params()))) and any(
+            p.requires_grad() for p in self.model.params()
+        )
+
         # Establish device to use in the experiment
         self.device = config["train"]["device"]
 
@@ -98,7 +104,14 @@ class BaseRunner:
         self.train_dl = None
         self.val_dl = None
         self.test_dl = None
-        self.epochs = self.train_config["epochs"]
+
+        if self.is_trainable:
+            self.epochs = self.train_config["epochs"]
+        else:
+            print(
+                "The model does not have trainable params, epoch num is set equal to 1"
+            )
+            self.epochs = 1
 
         self.main_val_metric = self.eval_config["init"]["main_val_metric"]
 
@@ -184,7 +197,8 @@ class BaseRunner:
             if isinstance(loss, Mapping):
                 loss = loss["total"]
 
-            loss.backward()
+            if self.is_trainable:
+                loss.backward()
 
             self.optimizer.step()
             if self.scheduler is not None:
@@ -226,7 +240,7 @@ class BaseRunner:
         with open(destination_path, "w") as f:
             json.dump(metric_dict, f)
 
-    def train(self, model, train_dl, val_dl):
+    def train(self, train_dl, val_dl):
         """Train the model for a configured number of epochs.
 
         Sets the model to training mode, moves it to the appropriate device,
@@ -239,8 +253,8 @@ class BaseRunner:
         """
 
         # setup model
-        model.train()
-        model.to(self.device)
+        self.model.train()
+        self.model.to(self.device)
         self.key_val_metric = self.eval_config["init"]["key_val_metric"]
         # Re-initialize optimizer and scheduler (optional, could reuse existing)
         self.optimizer, self.scheduler = self.model.configure_optimizers(self.config)
@@ -251,6 +265,9 @@ class BaseRunner:
 
         best_metric_dict = {key: torch.inf for key in self.metrics}
         old_metric_dict = {self.key_val_metric: torch.inf}
+
+        # check if the model has trainable params
+
         for epoch in pbar_upper_level:
             self._train_epoch(train_dl)
             metric_dict = self._val_epoch(val_dl)

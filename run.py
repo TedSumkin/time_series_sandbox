@@ -23,13 +23,6 @@ def set_global_seed(seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
 
 
-def save_resolved_config(cfg: DictConfig, out_dir: Path) -> None:
-    """Persist the resolved Hydra config alongside experiment artifacts."""
-    out_dir.mkdir(parents=True, exist_ok=True)
-    config_path = out_dir / "resolved_config.yaml"
-    config_path.write_text(OmegaConf.to_yaml(cfg, resolve=True), encoding="utf-8")
-
-
 def log_experiment_header(cfg: DictConfig, out_dir: Path) -> None:
     """Print a compact experiment summary for terminal visibility."""
     experiment_name = cfg.get("experiment_name", "unnamed_experiment")
@@ -45,7 +38,8 @@ def main(cfg: DictConfig) -> str:
     hydra_config = HydraConfig.get()
     out_dir = Path(hydra_config.runtime.output_dir)
 
-    save_resolved_config(cfg, out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
     log_experiment_header(cfg, out_dir)
 
     seed = int(cfg.get("random_seed", {}).get("seed", 42))
@@ -64,7 +58,7 @@ def main(cfg: DictConfig) -> str:
             model=model,
         )
 
-        # TO DO: move this block to runner code. 
+        # TO DO: move this block to runner code.
         # it looks unsafe
         train_dl, val_dl, test_dl = task.build_dataloaders(cfg)
         runner.train_dl = train_dl
@@ -79,7 +73,7 @@ def main(cfg: DictConfig) -> str:
             return str(out_dir)
 
         best_val_metrics = runner.train(model=model, train_dl=train_dl, val_dl=val_dl)
-        
+
         runner.load_best_checkpoint()
         test_metrics = runner.test(test_dl=test_dl)
 

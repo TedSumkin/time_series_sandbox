@@ -83,9 +83,9 @@ Definition of Done (общий):
 
 ### День 8: 2 baseline’а (контрольные точки)
 
-- [ ] Baseline #1: Persistence/Naive (последнее значение / last-window)
-- [ ] Baseline #2: Ridge regression по лагам (sklearn) или простой linear head в torch
-- [ ] Убедиться, что baseline’ы используют тот же Task/Runner контракт (через адаптер)
+- [x] Baseline #1: Persistence/Naive (последнее значение / last-window)
+- [x] Baseline #2: MLP #Ridge regression по лагам (sklearn) или простой linear head в torch
+- [x] Убедиться, что baseline’ы используют тот же Task/Runner контракт (через адаптер)
 
 ### День 10: Предохранители v1 (минимум 5) + pytest каркас
 
@@ -99,18 +99,18 @@ Definition of Done (общий):
 - [x] Добавить `tests/test_sanity.py`:
   - [ ] тесты на падение при намеренной поломке (1–2 негативных теста)
 
-  1. [ ] перенести off_by_one_check в ForecastingTask.
-  2. [ ] перенести split_check и finite_check в ForecastingTask.
+  1. [x] перенести off_by_one_check в ForecastingTask.
+  2. [x] перенести split_check и finite_check в ForecastingTask.
 
 ### День 12–14: Полировка Week 2 (первый “готовый станок”)
 
 - [x] CLI/entrypoint:
   - `python run.py task=forecast model=mlp baseline=persistence`
-- [ ] Документировать “Как добавить модель за 10 минут”
-- [ ] Зафиксировать “Definition of Done Week 2”:
-  - [ ] 1 задача (forecasting) + 2 baseline + 1 простая нейромодель (MLP) + 5 checks
-  - [ ] артефакты сохраняются стабильно
-  - [ ] sanity-run проходит за несколько минут
+- [x] Документировать “Как добавить модель за 10 минут”
+- [x] Зафиксировать “Definition of Done Week 2”:
+  - [x] 1 задача (forecasting) + 2 baseline + 1 простая нейромодель (MLP) + 5 checks
+  - [x] артефакты сохраняются стабильно
+  - [x] sanity-run проходит за несколько минут
 
 ---
 
@@ -125,11 +125,10 @@ Definition of Done (общий):
 ### День 18: Предохранители v2 (довести до 10)
 
 Добавить ещё 5:
-  6. [ ] `leakage_check`: нет будущих точек во входе относительно таргета (по time index / метаданным)
-  7. [ ] `determinism_check`: 2 запуска sanity-run с одним seed дают близкие результаты (допуск)
-  8. [ ] `checkpoint_roundtrip_check`: save/load не меняет pred на одном batch
-  9. [ ] `baseline_sanity_check`: baseline не даёт “подозрительно идеальные” метрики (MSE≈0) без причины
-  10. [ ] `speed_check`: sanity-run (например 100 шагов) не превышает порог времени (на твоей машине)
+  1. [ ] `determinism_check`: 2 запуска sanity-run с одним seed дают близкие результаты (допуск)
+  2. [ ] `checkpoint_roundtrip_check`: save/load не меняет pred на одном batch
+  3. [ ] `baseline_sanity_check`: baseline не даёт “подозрительно идеальные” метрики (MSE≈0) без причины
+  4. [ ] `speed_check`: sanity-run (например 100 шагов) не превышает порог времени (на твоей машине)
 
 ### День 20: Оформить checks как pytest + удобные сообщения
 
