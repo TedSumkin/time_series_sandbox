@@ -79,7 +79,7 @@ Definition of Done (общий):
   - [x] генерация окон (context length `T`, horizon `H`)
   - [x] dataloaders (train/val/test)
   - [x] метрики: MSE/MAE + horizon-wise MSE (по шагам горизонта)
-  - [ ] визуализация: `pred_vs_true.png`, `horizon_errors.png`
+  - [x] визуализация: `pred_vs_true.png`, #`horizon_errors.png`
 
 ### День 8: 2 baseline’а (контрольные точки)
 
@@ -97,7 +97,7 @@ Definition of Done (общий):
   4. [x] `overfit_one_batch_check`: модель за N шагов заметно снижает loss на одном batch
   5. [x] `off_by_one_check` на синтетике (или через контролируемый сдвиг)
 - [x] Добавить `tests/test_sanity.py`:
-  - [ ] тесты на падение при намеренной поломке (1–2 негативных теста)
+  - [x] тесты на падение при намеренной поломке (1–2 негативных теста)
 
   1. [x] перенести off_by_one_check в ForecastingTask.
   2. [x] перенести split_check и finite_check в ForecastingTask.

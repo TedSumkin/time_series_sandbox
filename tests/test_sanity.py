@@ -20,6 +20,7 @@ from sandbox.runners.base_runner import BaseRunner
 from sandbox.utils.check import (
     finite_dataset_check,
     off_by_one_check,
+    run_default_checks,
     split_check,
 )
 
@@ -91,6 +92,14 @@ class TinyLinear(nn.Module):
 
     def load_checkpoint(self, checkpoint_dir):
         pass
+
+
+class NoLearningLinear(TinyLinear):
+    """Broken model double that computes gradients but never updates weights."""
+
+    def configure_optimizers(self, cfg):
+        """Use zero learning rate so overfit checks must fail."""
+        return torch.optim.SGD(self.parameters(), lr=0.0), None
 
 
 class TimeWindowDataset(Dataset):
@@ -186,6 +195,42 @@ def test_split_check_accepts_disjoint_time_indices():
     split_check(train_dl, val_dl, test_dl)
 
 
+def test_default_checks_reject_non_finite_train_data():
+    """run_default_checks should fail when train data contains NaN/Inf."""
+    x = torch.tensor([[-1.0], [0.0], [float("nan")], [2.0]])
+    y = 2.0 * x + 1.0
+    train_dl = DataLoader(TensorDataset(x, y), batch_size=4, shuffle=False)
+
+    with pytest.raises(AssertionError, match="finite_dataset_check"):
+        run_default_checks(
+            model=TinyLinear(),
+            task=DummyTask(),
+            train_dl=train_dl,
+            val_dl=None,
+            test_dl=None,
+            train_config={"lr": 0.1},
+            device="cpu",
+        )
+
+
+def test_default_checks_reject_model_that_cannot_overfit_one_batch():
+    """run_default_checks should fail when a trainable model cannot learn."""
+    x = torch.tensor([[-1.0], [0.0], [1.0], [2.0]])
+    y = 2.0 * x + 1.0
+    train_dl = DataLoader(TensorDataset(x, y), batch_size=4, shuffle=False)
+
+    with pytest.raises(AssertionError, match="overfit_one_batch_check"):
+        run_default_checks(
+            model=NoLearningLinear(),
+            task=DummyTask(),
+            train_dl=train_dl,
+            val_dl=None,
+            test_dl=None,
+            train_config={"lr": 0.1},
+            device="cpu",
+        )
+
+
 def test_base_runner_delegates_sanity_checks(tmp_path):
     """BaseRunner.run_checks should call the shared check mechanism.
 
@@ -215,6 +260,8 @@ def test_base_runner_delegates_sanity_checks(tmp_path):
         model=TinyLinear(),
     )
     runner.train_dl = train_dl
+    runner.val_dl = train_dl
+    runner.test_dl = train_dl
 
     results = runner.run_checks()
 
