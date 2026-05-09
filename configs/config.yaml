@@ -6,10 +6,11 @@ defaults:
   - data: ett_dataset
   - random_seed: basic
 
+sanity_run: False
 experiment_name: ett_mlp_forecasting
 
 train:
-  device: cpu
+  device: cuda
   epochs: 5
   early_stopping:
     patience: 3

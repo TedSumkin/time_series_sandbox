@@ -72,3 +72,4 @@ logs/
 .ipynb_checkpoints/
 *.ipynb
 LOGGING.md
+micro_todo.md
