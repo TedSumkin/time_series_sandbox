@@ -93,6 +93,81 @@ class NaiveLastValueModel(nn.Module):
         )
 
 
+class EWMA(nn.Module):
+    def __init__(self, alpha: float, horizon: int):
+        super(EWMA, self).__init__()
+        self.alpha = alpha
+        self.horizon = horizon
+        print(
+            "EWMA initialized, using only the last value of the input sequence for forecasting."
+        )
+
+    def _extract_x(self, batch) -> torch.Tensor:
+        x = batch["x"]
+        return x
+
+    def _prepare_input(self, x: torch.Tensor):
+
+        if x.ndim not in [1, 2, 3]:
+            raise ValueError(
+                f"Expected input tensor to have 1, 2 or 3 input dimensions."
+            )
+        if x.ndim == 1:
+            x = x.unsqueeze(0).unsqueeze(-1)
+
+        if x.ndim == 2:
+            x = x.unsqueeze(-1)
+        if x.ndim != 3:
+            raise ValueError(
+                f"Expected 3D tensor after preprocessing, got shape={tuple(x.shape)}"
+            )
+
+        return x
+
+    def forward(self, batch):
+
+        x = self._extract_x(batch)
+        x = self._prepare_input(x)
+        series = x[:, :, -1:]
+        s = series[:, 0:1, :]
+
+        for t in range(1, series.shape[1]):
+            s = self.alpha * series[:, t : t + 1, :] + (1 - self.alpha) * s
+
+        pred = s.expand((s.shape[0], self.horizon, s.shape[-1]))
+        return pred
+
+    def predict(self, batch):
+        return self(batch)
+
+    def configure_optimizers(self, cfg) -> Tuple[torch.optim.Optimizer, None]:
+
+        class NotAnOptimizer:
+            def __init__(self, cfg):
+                self.cfg = cfg
+
+            def step(self):
+                return
+
+            def zero_grad(self):
+                return
+
+        return NotAnOptimizer(cfg), None
+        # return torch.optim.AdamW(lr=0.1, params=self.parameters()), None
+
+    def save_checkpoint(self, checkpoint_dir: Union[str, Path]) -> None:
+        """Save the model checkpoint to the specified directory."""
+        torch.save(
+            self.state_dict(), Path(checkpoint_dir) / "NontrainableEWMAForOTOnly.pth"
+        )
+
+    def load_checkpoint(self, checkpoint_dir: Union[str, Path]) -> None:
+        """Load the model checkpoint from the specified directory."""
+        self.load_state_dict(
+            torch.load(Path(checkpoint_dir) / "NontrainableEWMAForOTOnly.pth")
+        )
+
+
 if __name__ == "__main__":
     model = NaiveLastValueModel(horizon=5)
     print(list(model.parameters()))

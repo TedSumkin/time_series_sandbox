@@ -1,0 +1,4 @@
+_target_: sandbox.baselines.forecasting_baselines.EWMA
+
+alpha: 0.3
+horizon: ${tasks.config.window.horizon}

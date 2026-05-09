@@ -1,7 +1,7 @@
 defaults:
   - _self_
   - tasks: forecasting
-  - models: naive_forecast #mlp
+  - models: forecasting_cnn #nontrainable_ewma
   - runner: base_runner
   - data: ett_dataset
   - random_seed: basic

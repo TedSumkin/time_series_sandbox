@@ -1,0 +1,17 @@
+_target_: sandbox.models.forecasting_cnn.ForecastingCNN
+
+# ETTh* rows expose 7 numeric features after dropping the date column.
+input_channels: 7
+
+# Number of predicted target features per forecast step.
+output_dim: 1
+
+# Keep the model horizon aligned with the forecasting task window.
+horizon: ${tasks.config.window.horizon}
+
+# Small CNN/TCN-lite style backbone.
+hidden_channels: 32
+kernel_size: 3
+num_layers: 2
+dropout: 0.0
+use_batch_norm: false

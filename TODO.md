@@ -118,8 +118,8 @@ Definition of Done (общий):
 
 ### День 16: Ещё 2 baseline’а
 
-- [ ] Baseline #3: EWMA / Moving Average (как фильтр или как прогноз по экспон. сглаживанию)
-- [ ] Baseline #4: Small CNN/TCN-lite (быстрый нейро-бейзлайн)
+- [x] Baseline #3: EWMA / Moving Average (как фильтр или как прогноз по экспон. сглаживанию)
+- [x] Baseline #4: Small CNN/TCN-lite (быстрый нейро-бейзлайн)
 - [ ] Сравнение baseline’ов в единой таблице результатов
 
 ### День 18: Предохранители v2 (довести до 10)
