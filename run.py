@@ -72,7 +72,7 @@ def main(cfg: DictConfig) -> str:
             print(f"Sanity check results: {check_results}")
             return str(out_dir)
 
-        best_val_metrics = runner.train(model=model, train_dl=train_dl, val_dl=val_dl)
+        best_val_metrics = runner.train(train_dl=train_dl, val_dl=val_dl)
 
         runner.load_best_checkpoint()
         test_metrics = runner.test(test_dl=test_dl)
