@@ -83,9 +83,8 @@ class BaseRunner:
         self.task = task
 
         # check if the model is trainable
-        self.is_trainable = bool(len(list(self.model.params()))) and any(
-            p.requires_grad() for p in self.model.params()
-        )
+        model_params = list(self.model.parameters())
+        self.is_trainable = any(p.requires_grad for p in model_params)
 
         # Establish device to use in the experiment
         self.device = config["train"]["device"]
@@ -159,6 +158,8 @@ class BaseRunner:
 
         for batch in pbar_eval:
             prediction = self.model.predict(batch)
+            if num_batches == 0 and eval_mode == "test":
+                self.task.visualize(prediction, batch, self.output_dir)
             loss = self.task.loss_fn(prediction, batch)
             if isinstance(loss, Mapping):
                 loss = loss["total"]
@@ -283,7 +284,7 @@ class BaseRunner:
                 old_metric_dict = best_metric_dict
                 best_metric_dict = metric_dict
                 # temporal placeholder for checkpoint saving to the output dir
-                # TODO: implement save_checkpoint and save_vaL_metrics
+                # implement save_checkpoint and save_vaL_metrics
                 self.model.save_checkpoint(self.checkpoint_dir)
         self.save_metrics(best_metric_dict, Path(self.output_dir) / "val_metrics.json")
 
