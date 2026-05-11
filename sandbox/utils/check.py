@@ -280,6 +280,76 @@ def off_by_one_check(
     print("Off-by-one check passed")
 
 
+def speed_test(
+    model: ModelProtocol,
+    task: TaskProtocol,
+    train_dl: DataLoader,
+    optimizer: torch.optim.Optimizer,
+    device: str,
+):
+    """Run a simple speed test to ensure the model can process  batches in a reasonable time frame.
+    This is not a strict check but can help catch gross inefficiencies.
+    """
+    import time
+
+    print("Running speed test on one batch...")
+    check_model = copy.deepcopy(model)
+    check_model.train()
+    check_model.to(str)
+    start_time = time.time()
+    for i in range(100):
+        batch = next(train_dl)
+        pred = check_model(batch)
+        optimizer.zero_grad()
+        loss = task.loss_fn(pred, batch)
+        loss.backward()
+        optimizer.step()
+
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+
+    print(f"Speed test completed in {elapsed_time:.4f} seconds with loss")
+    assert elapsed_time < 60.0, "Model forward pass is too slow"
+    print("Speed test passed")
+
+
+def baseline_sanity_check(
+    model: ModelProtocol,
+    task: TaskProtocol,
+    optimizer: torch.optim.Optimizer,
+    train_dl: DataLoader,
+    val_dl: DataLoader,
+    device: str,
+) -> None:
+    """Check that the model does not yield metrics too low in one epoch."""
+    print("Running baseline sanity check...")
+    check_model = copy.deepcopy(model)
+    check_model.train()
+    check_model.to(device)
+    loss_fn = task.loss_fn
+
+    for batch in train_dl:
+        pred = model()
+        optimizer.zero_grad()
+        loss = loss_fn(pred, batch)
+        loss.backward()
+        optimizer.step()
+
+    check_model.eval()
+    with torch.no_grad():
+        loss_value = 0
+        for batch in val_dl:
+            pred = check_model(batch)
+            loss = loss_fn(pred, batch)
+            if isinstance(loss, Mapping):
+                loss = loss["total"]
+            loss_value += float(loss.detach().cpu())
+        print(f"Baseline sanity check loss: {loss_value}")
+        assert loss_value < 1e6, "Baseline sanity check failed: loss is too high"
+        assert loss_value > 1e-6, "Baseline sanity check failed: loss is too low"
+    print("Baseline sanity check passed")
+
+
 def run_default_checks(
     model: ModelProtocol,
     task: TaskProtocol,
@@ -288,6 +358,7 @@ def run_default_checks(
     test_dl: Optional[DataLoader | Dataset | Iterable[Any]],
     train_config: Mapping[str, Any],
     device: str | torch.device,
+    optimizer: torch.optim.Optimizer,
 ) -> list[CheckResult]:
     """Run the default runner sanity checks and return structured results."""
     checks: dict[str, CheckFn] = {
@@ -312,6 +383,21 @@ def run_default_checks(
             dataloader=train_dl,
             device=device,
             dataloader_name="Train",
+        ),
+        "speed_test": lambda: speed_test(
+            model=model,
+            task=task,
+            train_dl=train_dl,
+            optimizer=optimizer,
+            device=device,
+        ),
+        "baseline_sanity_check": lambda: baseline_sanity_check(
+            model=model,
+            task=task,
+            optimizer=optimizer,
+            train_dl=train_dl,
+            val_dl=val_dl,
+            device=device,
         ),
     }
 
