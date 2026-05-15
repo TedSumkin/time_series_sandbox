@@ -323,6 +323,7 @@ class BaseRunner:
             raise ValueError("test_dl must be set before running checks")
 
         return sanity_check.run_default_checks(
+            runner=self,
             model=self.model,
             task=self.task,
             train_dl=self.train_dl,
@@ -330,4 +331,5 @@ class BaseRunner:
             test_dl=self.test_dl,
             train_config=self.train_config,
             device=self.device,
+            optimizer=self.optimizer,
         )

@@ -1,16 +1,17 @@
 """Reusable sanity checks for runner, model, and dataloader contracts."""
 
 from __future__ import annotations
-
 import copy
-import gc
 from dataclasses import dataclass
-from typing import Any, Callable, Iterable, Mapping, Optional
+import gc
+import os
+from pathlib import Path
+from typing import Any, Callable, Dict, Iterable, Mapping
 
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from sandbox.contracts import ModelProtocol, TaskProtocol
+from sandbox.contracts import ModelProtocol, TaskProtocol, RunnerProtocol
 
 
 @dataclass(frozen=True)
@@ -39,7 +40,7 @@ def run_checks(checks: Mapping[str, CheckFn]) -> list[CheckResult]:
     return [run_check(name, check_fn) for name, check_fn in checks.items()]
 
 
-def _iter_batches(data: DataLoader | Dataset | Iterable[Any]) -> Iterable[Any]:
+def _iter_batches(data: DataLoader) -> Iterable[Any]:
     if isinstance(data, Dataset):
         for idx in range(len(data)):
             yield data[idx]
@@ -58,13 +59,13 @@ def _iter_tensors(value: Any) -> Iterable[torch.Tensor]:
             yield from _iter_tensors(item)
 
 
-def _first_batch(data: DataLoader | Dataset | Iterable[Any]) -> Any:
+def _first_batch(data: DataLoader) -> Any:
     for batch in _iter_batches(data):
         return batch
     raise ValueError("Cannot inspect an empty dataloader or dataset")
 
 
-def has_time_window_keys(data: DataLoader | Dataset | Iterable[Any]) -> bool:
+def has_time_window_keys(data: DataLoader) -> bool:
     """Return whether the first batch exposes forecasting time-window keys."""
     batch = _first_batch(data)
     return isinstance(batch, Mapping) and "x_t" in batch and "y_t" in batch
@@ -98,22 +99,22 @@ def model_forward_predict_check(model: ModelProtocol) -> None:
 
 
 def finite_dataset_check(
-    dataloader: DataLoader | Dataset | Iterable[Any],
+    dataloader: DataLoader,
     dataloader_name: str = "Train",
 ) -> None:
     """Check that all tensor values emitted by a dataloader are finite."""
     print(f"Checking finite dataset for {dataloader_name} dataloader...")
     for batch in _iter_batches(dataloader):
         for tensor in _iter_tensors(batch):
-            assert torch.isfinite(
-                tensor
-            ).all(), f"{dataloader_name} dataloader contains non-finite values"
+            assert torch.isfinite(tensor).all(), (
+                f"{dataloader_name} dataloader contains non-finite values"
+            )
     print("Finite dataset check passed")
 
 
 def finite_model_output_check(
     model: ModelProtocol,
-    dataloader: DataLoader | Dataset | Iterable[Any],
+    dataloader: DataLoader,
     device: str | torch.device,
     dataloader_name: str = "Train",
 ) -> None:
@@ -126,9 +127,9 @@ def finite_model_output_check(
     with torch.no_grad():
         for batch in _iter_batches(dataloader):
             output = check_model(batch)
-            assert torch.isfinite(
-                output
-            ).all(), f"{dataloader_name} model output contains non-finite values"
+            assert torch.isfinite(output).all(), (
+                f"{dataloader_name} model output contains non-finite values"
+            )
 
     del check_model
     gc.collect()
@@ -138,7 +139,7 @@ def finite_model_output_check(
 def finite_grad_check(
     model: ModelProtocol,
     task: TaskProtocol,
-    dataloader: DataLoader | Dataset | Iterable[Any],
+    dataloader: DataLoader,
     train_config: Mapping[str, Any],
     device: str | torch.device,
 ) -> None:
@@ -156,15 +157,18 @@ def finite_grad_check(
             optimizer.zero_grad()
             output = check_model(batch)
             loss = loss_fn(output, batch)
-            if isinstance(loss, Mapping):
-                loss = loss["total"]
+            if isinstance(loss, dict):
+                try:
+                    loss = loss["total"]
+                finally:
+                    print("Check your loss dict structure in code")
             loss.backward()
 
             for param in check_model.parameters():
                 if param.grad is not None:
-                    assert torch.isfinite(
-                        param.grad
-                    ).all(), "Model yields non-finite gradients"
+                    assert torch.isfinite(param.grad).all(), (
+                        "Model yields non-finite gradients"
+                    )
 
             if should_step:
                 optimizer.step()
@@ -177,7 +181,7 @@ def finite_grad_check(
 def overfit_one_batch_check(
     model: ModelProtocol,
     task: TaskProtocol,
-    train_dl: DataLoader | Dataset | Iterable[Any],
+    train_dl: DataLoader,
     train_config: Mapping[str, Any],
     device: str | torch.device,
     num_steps: int = 200,
@@ -250,7 +254,7 @@ def split_check(
 
 
 def off_by_one_check(
-    data: DataLoader | Dataset | Iterable[Any],
+    data: DataLoader,
     dataloader_name: str = "Dataset",
     require_contiguous: bool = False,
     rtol: float = 1e-4,
@@ -260,7 +264,6 @@ def off_by_one_check(
     print(f"Checking off-by-one errors for {dataloader_name} dataloader...")
 
     for batch in _iter_batches(data):
-
         x_t, y_t = _time_keys(batch)
 
         assert (x_t[:, -1] < y_t[:, 0]).all(), (
@@ -285,7 +288,7 @@ def speed_test(
     task: TaskProtocol,
     train_dl: DataLoader,
     optimizer: torch.optim.Optimizer,
-    device: str,
+    device: str | torch.device,
 ):
     """Run a simple speed test to ensure the model can process  batches in a reasonable time frame.
     This is not a strict check but can help catch gross inefficiencies.
@@ -295,10 +298,11 @@ def speed_test(
     print("Running speed test on one batch...")
     check_model = copy.deepcopy(model)
     check_model.train()
-    check_model.to(str)
+    check_model.to(device)
     start_time = time.time()
-    for i in range(100):
-        batch = next(train_dl)
+    print(f"SPEED TEST DEVICE {device}")
+    for _ in range(1000):
+        batch = next(train_dl.__iter__())
         pred = check_model(batch)
         optimizer.zero_grad()
         loss = task.loss_fn(pred, batch)
@@ -319,7 +323,7 @@ def baseline_sanity_check(
     optimizer: torch.optim.Optimizer,
     train_dl: DataLoader,
     val_dl: DataLoader,
-    device: str,
+    device: str | torch.device,
 ) -> None:
     """Check that the model does not yield metrics too low in one epoch."""
     print("Running baseline sanity check...")
@@ -329,7 +333,7 @@ def baseline_sanity_check(
     loss_fn = task.loss_fn
 
     for batch in train_dl:
-        pred = model()
+        pred = check_model(batch)
         optimizer.zero_grad()
         loss = loss_fn(pred, batch)
         loss.backward()
@@ -350,12 +354,94 @@ def baseline_sanity_check(
     print("Baseline sanity check passed")
 
 
+def checkpoint_roundtrip_check(
+    model: ModelProtocol,
+    device: str | torch.device,
+    dataloader: DataLoader,
+) -> None:
+    """Check that the model can save and load a checkpoint without errors."""
+    print("Running checkpoint roundtrip check...")
+    check_model = copy.deepcopy(model)
+    check_model.to(device)
+
+    first_batch = _first_batch(dataloader)
+    with torch.no_grad():
+        output_before = check_model(first_batch)
+
+    checkpoint_dir = Path(__file__).parent.parent.parent / "tests" / "temporary"
+    Path.mkdir(checkpoint_dir, exist_ok=True)
+    checkpoint_path = checkpoint_dir / "temporary.pth"
+    torch.save(check_model.state_dict(), checkpoint_path)
+    loaded_state = torch.load(checkpoint_path, map_location=device)
+    check_model.load_state_dict(loaded_state)
+
+    with torch.no_grad():
+        output_after = check_model(first_batch)
+    try:
+        if isinstance(output_before, Mapping):
+            for key in output_before.keys():
+                assert key in output_after, (
+                    f"Key '{key}' missing in loaded model output"
+                )
+                assert torch.allclose(
+                    output_before[key], output_after[key], rtol=1e-4, atol=1e-6
+                ), f"Checkpoint roundtrip failed for key '{key}': outputs differ"
+
+        assert torch.allclose(output_before, output_after, rtol=1e-4, atol=1e-6), (
+            "Checkpoint roundtrip failed: outputs differ"
+        )
+    finally:
+        os.remove(checkpoint_path)
+
+    print("Checkpoint roundtrip check passed")
+
+
+def determinism_check(
+    runner: BaseRunner,
+    model: ModelProtocol,
+    train_dl: DataLoader,
+    val_dl: DataLoader,
+    test_dl: DataLoader,
+):
+
+    print("Starting determinism check")
+    runner_epochs = runner.epochs
+    runner.epochs = 1
+    check_model = copy.deepcopy(model)
+
+    runner.train(train_dl, val_dl)
+    metrics_first = runner.test(test_dl)
+
+    runner.model = copy.deepcopy(check_model)
+    runner.train(train_dl, val_dl)
+    metrics_second = runner.test(test_dl)
+    runner.model = check_model
+    runner.epochs = runner_epochs
+
+    for key, val in metrics_first.items():
+        if (
+            isinstance(val, float)
+            or isinstance(val, torch.float)
+            or isinstance(val, torch.Tensor)
+        ):
+            if isinstance(val, float):
+                val_0 = torch.FloatTensor([val])
+                val_1 = torch.FloatTensor([metrics_second[key]])
+
+            assert torch.allclose(val_0, val_1), (
+                f"Equal starts returned substantially different results: {val} and {metrics_second[key]} for key {key}"
+            )
+    print("Passed determinism check")
+    return
+
+
 def run_default_checks(
+    runner: RunnerProtocol,
     model: ModelProtocol,
     task: TaskProtocol,
-    train_dl: DataLoader | Dataset | Iterable[Any],
-    val_dl: Optional[DataLoader | Dataset | Iterable[Any]],
-    test_dl: Optional[DataLoader | Dataset | Iterable[Any]],
+    train_dl: DataLoader,
+    val_dl: DataLoader,
+    test_dl: DataLoader,
     train_config: Mapping[str, Any],
     device: str | torch.device,
     optimizer: torch.optim.Optimizer,
@@ -398,6 +484,18 @@ def run_default_checks(
             train_dl=train_dl,
             val_dl=val_dl,
             device=device,
+        ),
+        "checkpoint_roundtrip_check": lambda: checkpoint_roundtrip_check(
+            model=model,
+            device=device,
+            dataloader=train_dl,
+        ),
+        "determinism_check": lambda: determinism_check(
+            runner=runner,
+            model=model,
+            train_dl=train_dl,
+            val_dl=val_dl,
+            test_dl=test_dl,
         ),
     }
 
