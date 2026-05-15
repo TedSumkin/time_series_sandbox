@@ -49,7 +49,7 @@ The repository is versatile enough to perform the following tasks:
     Is a wrapped version of `forward` used for convenience and code readability.
 
 - `configure_optimizers(cfg) -> (optimizer, scheduler|None)`.
-    The model does not neccessarily have to have this method.
+    The model does not necessarily have to have this method.
     Personally I usually configure optimizers in a separate train.py file.
 
 ## Runner
