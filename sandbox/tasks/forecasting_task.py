@@ -154,7 +154,7 @@ class BasicSlidingWindowDataset(Dataset):
     def __len__(self) -> int:
         return len(self.start_indices)
 
-    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+    def __getitem__(self, idx: int) -> Dict[str, Union[torch.Tensor, dict]]:
         start_idx = int(self.start_indices[idx].item())
         target_idx = int(self.target_indices[idx].item())
         end_idx = int(self.end_indices[idx].item())
@@ -215,16 +215,12 @@ class ForecastingTask(nn.Module):
 
         for metric_key, metric_name in metric_names.items():
             if metric_name == "mse":
-                metric_fns[metric_key] = (
-                    lambda prediction, batch: nn.functional.mse_loss(
-                        prediction, batch["y"]
-                    )
+                metric_fns[metric_key] = lambda prediction, batch: (
+                    nn.functional.mse_loss(prediction, batch["y"])
                 )
             elif metric_name == "mae":
-                metric_fns[metric_key] = (
-                    lambda prediction, batch: nn.functional.l1_loss(
-                        prediction, batch["y"]
-                    )
+                metric_fns[metric_key] = lambda prediction, batch: (
+                    nn.functional.l1_loss(prediction, batch["y"])
                 )
             else:
                 raise NotImplementedError(f"Unsupported metric: {metric_name}")
@@ -484,11 +480,10 @@ class ForecastingTask(nn.Module):
     def visualize(pred: torch.Tensor, batch: dict, outdir: Union[str, Path]) -> None:
         """Visualize prediction and target along with input values."""
         target = batch["y"].detach().cpu().numpy()
-        pred = pred.detach().cpu().numpy()
 
         plt.figure(figsize=(10, 5))
         plt.plot(target[0].squeeze(), label="Target")
-        plt.plot(pred[0].squeeze(), label="Prediction")
+        plt.plot(pred.detach().cpu().numpy()[0].squeeze(), label="Prediction")
         plt.legend()
         plt.title("Forecasting Task Visualization")
         plt.savefig(os.path.join(outdir, "forecasting_visualization.png"))
