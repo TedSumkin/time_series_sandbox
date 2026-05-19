@@ -4,6 +4,16 @@
 
 This repo is my pet project with utility functions and general functional used in most time-series researches. I'm going to transform it into a template for my future repos.
 
+To add a new model to this pipeline, you need to perform the following steps:
+
+1. Create model file in ./sandbox/models/. The key class must implement methods
+   forward, predict, configure_optimizers, save_checkpoint and load_checkpoint (watch the contract in this file or just use ./sandbox/models/mlp.py for reference)
+   The model have to extract the input tensor/tensors from the batch by itself. The structure of a batch is written at the end of this file.
+   The model should receive specific arguments in the constructor, not just config.
+2. If the model requires specific losses, implement them.
+3. Create model, optimizer, dataset and loss (if needed) configs in.
+
+The basic pipeline follows the contract below.
 ## Tasks
 
 The repository is versatile enough to perform the following tasks:
@@ -39,16 +49,16 @@ The repository is versatile enough to perform the following tasks:
     Is a wrapped version of `forward` used for convenience and code readability.
 
 - `configure_optimizers(cfg) -> (optimizer, scheduler|None)`.
-    The model does not neccessarily have to have this method.
+    The model does not necessarily have to have this method.
     Personally I usually configure optimizers in a separate train.py file.
 
 ## Runner
 
-- `train(task, model, dataloaders, cfg) -> artifacts (checkpoints, test results)`
+- `train(task, dataloaders, cfg) -> artifacts (checkpoints, test results)`
 
-- `eval(task, model, dataloader, cfg) -> metrics + optional preds with pictures`
+- `eval(task, dataloader, cfg) -> metrics + optional preds with pictures`
 
-- `test(task, model, dataloader, cfg) -> metrics + optional preds with pictures`
+- `test(task, dataloader, cfg) -> metrics + optional preds with pictures`
 
 ## SlidingWindowDataset
 

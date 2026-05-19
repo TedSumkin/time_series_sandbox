@@ -62,7 +62,7 @@ Definition of Done (общий):
   - [x] сохранение best checkpoint
   - [x] сохранение `metrics.json`/`metrics.csv`
   - [x] сохранение `config.yaml` + `seed` -- уже сохранено через декоратор @hydra.main
-- [ ] Добавить базовое логирование (stdout + файл `run.log`) [Забит болт, т.к. не вижу смысла]
+- [x] Добавить базовое логирование (stdout + файл `run.log`) [Забит болт, т.к. не вижу смысла]
 - [x] Добавить “sanity run” режим: `--sanity_steps N` (например 100):
   - [x] Добавить функционал в BaseRunner (Добавлено в виде формулы)
 
@@ -75,39 +75,42 @@ Definition of Done (общий):
   - [x] Без нормализаций
   - [x] С базовой нормализацией типа minmax
   Со временем необходимо в отдельную колонку вынести нормализацию.
-- [ ] Реализовать `tasks/forecasting.py`:
-  - [ ] генерация окон (context length `T`, horizon `H`)
-  - [ ] dataloaders (train/val/test)
-  - [ ] метрики: MSE/MAE + horizon-wise MSE (по шагам горизонта)
-  - [ ] визуализация: `pred_vs_true.png`, `horizon_errors.png`
+- [x] Реализовать `tasks/forecasting.py`:
+  - [x] генерация окон (context length `T`, horizon `H`)
+  - [x] dataloaders (train/val/test)
+  - [x] метрики: MSE/MAE + horizon-wise MSE (по шагам горизонта)
+  - [x] визуализация: `pred_vs_true.png`, #`horizon_errors.png`
 
 ### День 8: 2 baseline’а (контрольные точки)
 
-- [ ] Baseline #1: Persistence/Naive (последнее значение / last-window)
-- [ ] Baseline #2: Ridge regression по лагам (sklearn) или простой linear head в torch
-- [ ] Убедиться, что baseline’ы используют тот же Task/Runner контракт (через адаптер)
+- [x] Baseline #1: Persistence/Naive (последнее значение / last-window)
+- [x] Baseline #2: MLP #Ridge regression по лагам (sklearn) или простой linear head в torch
+- [x] Убедиться, что baseline’ы используют тот же Task/Runner контракт (через адаптер)
 
 ### День 10: Предохранители v1 (минимум 5) + pytest каркас
 
-- [ ] Сделать механизм checks: `utils/checks.py` + формат результата (ok/fail + message)
-- [ ] Реализовать 5 sanity checks для forecasting:
-  1. [ ] `finite_check`: нет NaN/Inf в x/y, loss, grads
-  2. [ ] `shape_check`: формы `pred` и `y` согласованы
-  3. [ ] `split_check`: нет пересечения индексов train/val/test (если индексы доступны)
-  4. [ ] `overfit_one_batch_check`: модель за N шагов заметно снижает loss на одном batch
-  5. [ ] `off_by_one_check` на синтетике (или через контролируемый сдвиг)
-- [ ] Добавить `tests/test_sanity.py`:
-  - [ ] тесты на падение при намеренной поломке (1–2 негативных теста)
+- [x] Сделать механизм checks: `utils/checks.py` + формат результата (ok/fail + message)
+- [x] Реализовать 5 sanity checks для forecasting (реализованы в BaseRunner):
+  1. [x] `finite_check`: нет NaN/Inf в x/y, loss, grads
+  2. [x] `shape_check`: формы `pred` и `y` согласованы
+  3. [x] `split_check`: нет пересечения индексов train/val/test (если индексы доступны)
+  4. [x] `overfit_one_batch_check`: модель за N шагов заметно снижает loss на одном batch
+  5. [x] `off_by_one_check` на синтетике (или через контролируемый сдвиг)
+- [x] Добавить `tests/test_sanity.py`:
+  - [x] тесты на падение при намеренной поломке (1–2 негативных теста)
+
+  1. [x] перенести off_by_one_check в ForecastingTask.
+  2. [x] перенести split_check и finite_check в ForecastingTask.
 
 ### День 12–14: Полировка Week 2 (первый “готовый станок”)
 
-- [ ] CLI/entrypoint:
+- [x] CLI/entrypoint:
   - `python run.py task=forecast model=mlp baseline=persistence`
-- [ ] Документировать “Как добавить модель за 10 минут”
-- [ ] Зафиксировать “Definition of Done Week 2”:
-  - [ ] 1 задача (forecasting) + 2 baseline + 1 простая нейромодель (MLP) + 5 checks
-  - [ ] артефакты сохраняются стабильно
-  - [ ] sanity-run проходит за несколько минут
+- [x] Документировать “Как добавить модель за 10 минут”
+- [x] Зафиксировать “Definition of Done Week 2”:
+  - [x] 1 задача (forecasting) + 2 baseline + 1 простая нейромодель (MLP) + 5 checks
+  - [x] артефакты сохраняются стабильно
+  - [x] sanity-run проходит за несколько минут
 
 ---
 
@@ -115,18 +118,17 @@ Definition of Done (общий):
 
 ### День 16: Ещё 2 baseline’а
 
-- [ ] Baseline #3: EWMA / Moving Average (как фильтр или как прогноз по экспон. сглаживанию)
-- [ ] Baseline #4: Small CNN/TCN-lite (быстрый нейро-бейзлайн)
+- [x] Baseline #3: EWMA / Moving Average (как фильтр или как прогноз по экспон. сглаживанию)
+- [x] Baseline #4: Small CNN/TCN-lite (быстрый нейро-бейзлайн)
 - [ ] Сравнение baseline’ов в единой таблице результатов
 
 ### День 18: Предохранители v2 (довести до 10)
 
 Добавить ещё 5:
-  6. [ ] `leakage_check`: нет будущих точек во входе относительно таргета (по time index / метаданным)
-  7. [ ] `determinism_check`: 2 запуска sanity-run с одним seed дают близкие результаты (допуск)
-  8. [ ] `checkpoint_roundtrip_check`: save/load не меняет pred на одном batch
-  9. [ ] `baseline_sanity_check`: baseline не даёт “подозрительно идеальные” метрики (MSE≈0) без причины
-  10. [ ] `speed_check`: sanity-run (например 100 шагов) не превышает порог времени (на твоей машине)
+  1. [ ] `determinism_check`: 2 запуска sanity-run с одним seed дают близкие результаты (допуск)
+  2. [x] `checkpoint_roundtrip_check`: save/load не меняет pred на одном batch
+  3. [x] `baseline_sanity_check`: baseline не даёт “подозрительно идеальные” метрики (MSE≈0) без причины 
+  4. [x] `speed_check`: sanity-run (например 100 шагов) не превышает порог времени (на твоей машине)
 
 ### День 20: Оформить checks как pytest + удобные сообщения
 
@@ -142,6 +144,7 @@ Definition of Done (общий):
 - вариант A: `ClassificationTask` (окна → класс)
 - вариант B: `AnomalyTask` (point-wise или window-wise)
 - вариант C: `RULTask` (регрессия по окнам)
+- вариант D: ReconstructionTask (восстановление)
 
 TODO:
 
@@ -158,8 +161,10 @@ TODO:
 - [ ] Обновить baseline-адаптеры, чтобы работали с любой задачей (где применимо)
 
 ### День 26: Репродьюсибилити и “таблица результатов”
+
 Первая половина отсюда была сделана сразу, т.е. результаты и конфиги сохраняются через hydra.
 В режиме multirun папки с runs/<run_id>/ были сделаны через конфиг.
+
 - [x] Автоматический отчёт после запуска:
   - [x] `results.csv` (run_id, task, model, baseline, seed, метрики)
   - [x] папка `runs/<run_id>/` с артефактами

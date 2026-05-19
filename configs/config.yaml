@@ -1,31 +1,37 @@
 defaults:
   - _self_
   - tasks: forecasting
-  - models: mlp
+  - models: forecasting_cnn #nontrainable_ewma
   - runner: base_runner
   - data: ett_dataset
   - random_seed: basic
+  - optimizer: base
 
+sanity_run: True
 experiment_name: ett_mlp_forecasting
 
 train:
-  device: cpu
+  device: cuda
   epochs: 5
   early_stopping:
     patience: 3
 
 eval:
   init:
+    # TODO: main_val_metric -> key_test_metric
     main_val_metric: loss
     key_val_metric: mse
 
 test: {}
 
-optimizer:
-  lr: 0.001
-  weight_decay: 0.0
+study_name: test_pipeline
 
 hydra:
+  run:
+    dir: ./outputs/${study_name}
+  sweep:
+    dir: multirun/timemixer_noise_dependence
+    subdir: run_${hydra.job.num}
   sweeper:
     params:
       random_seed.seed: 41, 42, 43

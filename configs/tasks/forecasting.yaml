@@ -11,4 +11,4 @@ config:
 
   window:
     context_length: 24
-    horizon: 1
+    horizon: 20
