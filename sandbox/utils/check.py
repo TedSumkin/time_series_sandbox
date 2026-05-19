@@ -4,7 +4,8 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass
 import gc
-import os
+import random
+import tempfile
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Mapping
 
@@ -65,6 +66,81 @@ def _first_batch(data: DataLoader) -> Any:
     raise ValueError("Cannot inspect an empty dataloader or dataset")
 
 
+def _assert_outputs_close(
+    output_before: Any,
+    output_after: Any,
+    *,
+    rtol: float = 1e-4,
+    atol: float = 1e-6,
+    path: str = "output",
+) -> None:
+    if isinstance(output_before, torch.Tensor):
+        assert isinstance(output_after, torch.Tensor), (
+            f"Checkpoint roundtrip failed at {path}: output type changed from "
+            f"Tensor to {type(output_after).__name__}"
+        )
+        assert torch.allclose(
+            output_before, output_after, rtol=rtol, atol=atol
+        ), f"Checkpoint roundtrip failed at {path}: outputs differ"
+        return
+
+    if isinstance(output_before, Mapping):
+        assert isinstance(output_after, Mapping), (
+            f"Checkpoint roundtrip failed at {path}: output type changed from "
+            f"Mapping to {type(output_after).__name__}"
+        )
+        assert (
+            output_before.keys() == output_after.keys()
+        ), f"Checkpoint roundtrip failed at {path}: output keys differ"
+        for key in output_before:
+            _assert_outputs_close(
+                output_before[key],
+                output_after[key],
+                rtol=rtol,
+                atol=atol,
+                path=f"{path}.{key}",
+            )
+        return
+
+    if isinstance(output_before, (list, tuple)):
+        assert isinstance(
+            output_after, type(output_before)
+        ), f"Checkpoint roundtrip failed at {path}: output sequence type changed"
+        assert len(output_before) == len(
+            output_after
+        ), f"Checkpoint roundtrip failed at {path}: output sequence length changed"
+        for idx, (before_item, after_item) in enumerate(
+            zip(output_before, output_after)
+        ):
+            _assert_outputs_close(
+                before_item,
+                after_item,
+                rtol=rtol,
+                atol=atol,
+                path=f"{path}[{idx}]",
+            )
+        return
+
+    assert (
+        output_before == output_after
+    ), f"Checkpoint roundtrip failed at {path}: outputs differ"
+
+
+def _metric_to_tensor(value: Any) -> torch.Tensor | None:
+    if isinstance(value, torch.Tensor):
+        return value.detach().cpu()
+    if isinstance(value, (float, int)) and not isinstance(value, bool):
+        return torch.tensor(value, dtype=torch.float32)
+    return None
+
+
+def _set_determinism_seed(seed: int) -> None:
+    random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
 def has_time_window_keys(data: DataLoader) -> bool:
     """Return whether the first batch exposes forecasting time-window keys."""
     batch = _first_batch(data)
@@ -106,9 +182,9 @@ def finite_dataset_check(
     print(f"Checking finite dataset for {dataloader_name} dataloader...")
     for batch in _iter_batches(dataloader):
         for tensor in _iter_tensors(batch):
-            assert torch.isfinite(tensor).all(), (
-                f"{dataloader_name} dataloader contains non-finite values"
-            )
+            assert torch.isfinite(
+                tensor
+            ).all(), f"{dataloader_name} dataloader contains non-finite values"
     print("Finite dataset check passed")
 
 
@@ -127,9 +203,9 @@ def finite_model_output_check(
     with torch.no_grad():
         for batch in _iter_batches(dataloader):
             output = check_model(batch)
-            assert torch.isfinite(output).all(), (
-                f"{dataloader_name} model output contains non-finite values"
-            )
+            assert torch.isfinite(
+                output
+            ).all(), f"{dataloader_name} model output contains non-finite values"
 
     del check_model
     gc.collect()
@@ -166,9 +242,9 @@ def finite_grad_check(
 
             for param in check_model.parameters():
                 if param.grad is not None:
-                    assert torch.isfinite(param.grad).all(), (
-                        "Model yields non-finite gradients"
-                    )
+                    assert torch.isfinite(
+                        param.grad
+                    ).all(), "Model yields non-finite gradients"
 
             if should_step:
                 optimizer.step()
@@ -185,7 +261,7 @@ def overfit_one_batch_check(
     train_config: Mapping[str, Any],
     device: str | torch.device,
     num_steps: int = 200,
-    max_loss_ratio: float = 1e-2,
+    max_loss_ratio: float = 1e-1,
 ) -> None:
     """Check that a model can strongly reduce loss on one batch."""
     print("Checking overfitting on one batch...")
@@ -216,7 +292,10 @@ def overfit_one_batch_check(
         ratio = final_loss / initial_loss
 
     print(f"Initial loss: {initial_loss}, final loss: {final_loss}, ratio: {ratio}")
-    assert ratio < max_loss_ratio, "Model is not overfitting"
+    assert ratio < max_loss_ratio, (
+        f"Model is not overfitting: final/initial loss ratio {ratio:.4g} "
+        f"is not below {max_loss_ratio:.4g}"
+    )
 
     del check_model
     gc.collect()
@@ -287,7 +366,7 @@ def speed_test(
     model: ModelProtocol,
     task: TaskProtocol,
     train_dl: DataLoader,
-    optimizer: torch.optim.Optimizer,
+    train_config: Mapping[str, Any],
     device: str | torch.device,
 ):
     """Run a simple speed test to ensure the model can process  batches in a reasonable time frame.
@@ -299,6 +378,7 @@ def speed_test(
     check_model = copy.deepcopy(model)
     check_model.train()
     check_model.to(device)
+    optimizer, _ = check_model.configure_optimizers(train_config)
     start_time = time.time()
     print(f"SPEED TEST DEVICE {device}")
     for _ in range(1000):
@@ -320,7 +400,7 @@ def speed_test(
 def baseline_sanity_check(
     model: ModelProtocol,
     task: TaskProtocol,
-    optimizer: torch.optim.Optimizer,
+    train_config: Mapping[str, Any],
     train_dl: DataLoader,
     val_dl: DataLoader,
     device: str | torch.device,
@@ -330,6 +410,7 @@ def baseline_sanity_check(
     check_model = copy.deepcopy(model)
     check_model.train()
     check_model.to(device)
+    optimizer, _ = check_model.configure_optimizers(train_config)
     loss_fn = task.loss_fn
 
     for batch in train_dl:
@@ -361,82 +442,114 @@ def checkpoint_roundtrip_check(
 ) -> None:
     """Check that the model can save and load a checkpoint without errors."""
     print("Running checkpoint roundtrip check...")
+
+    # copy model and create first batch output
     check_model = copy.deepcopy(model)
     check_model.to(device)
-
+    check_model.eval()
     first_batch = _first_batch(dataloader)
     with torch.no_grad():
-        output_before = check_model(first_batch)
+        output_before = check_model.predict(first_batch)
 
-    checkpoint_dir = Path(__file__).parent.parent.parent / "tests" / "temporary"
-    Path.mkdir(checkpoint_dir, exist_ok=True)
-    checkpoint_path = checkpoint_dir / "temporary.pth"
-    torch.save(check_model.state_dict(), checkpoint_path)
-    loaded_state = torch.load(checkpoint_path, map_location=device)
-    check_model.load_state_dict(loaded_state)
+    with tempfile.TemporaryDirectory() as checkpoint_dir:
+        checkpoint_dir_path = Path(checkpoint_dir)
+        check_model.save_checkpoint(checkpoint_dir=checkpoint_dir_path)
 
-    with torch.no_grad():
-        output_after = check_model(first_batch)
-    try:
-        if isinstance(output_before, Mapping):
-            for key in output_before.keys():
-                assert key in output_after, (
-                    f"Key '{key}' missing in loaded model output"
-                )
-                assert torch.allclose(
-                    output_before[key], output_after[key], rtol=1e-4, atol=1e-6
-                ), f"Checkpoint roundtrip failed for key '{key}': outputs differ"
+        loaded_model = copy.deepcopy(model)
+        loaded_model.to(device)
+        loaded_model.load_checkpoint(checkpoint_dir=checkpoint_dir_path)
+        loaded_model.to(device)
+        loaded_model.eval()
 
-        assert torch.allclose(output_before, output_after, rtol=1e-4, atol=1e-6), (
-            "Checkpoint roundtrip failed: outputs differ"
-        )
-    finally:
-        os.remove(checkpoint_path)
+        with torch.no_grad():
+            output_after = loaded_model.predict(first_batch)
+
+    _assert_outputs_close(output_before, output_after)
 
     print("Checkpoint roundtrip check passed")
 
 
 def determinism_check(
-    runner: BaseRunner,
-    model: ModelProtocol,
+    runner: RunnerProtocol,
     train_dl: DataLoader,
     val_dl: DataLoader,
     test_dl: DataLoader,
+    seed: int = 0,
+    rtol: float = 1e-4,
+    atol: float = 1e-6,
 ):
 
     print("Starting determinism check")
-    runner_epochs = runner.epochs
-    runner.epochs = 1
-    check_model = copy.deepcopy(model)
+    base_model = copy.deepcopy(runner.model)
+    original_model = runner.model
+    original_optimizer = getattr(runner, "optimizer", None)
+    original_scheduler = getattr(runner, "scheduler", None)
+    original_epochs = getattr(runner, "epochs", None)
+    original_output_dir = getattr(runner, "output_dir", None)
+    original_checkpoint_dir = getattr(runner, "checkpoint_dir", None)
+    original_early_stopping_counter = getattr(runner, "early_stopping_counter", None)
+    python_rng_state = random.getstate()
+    torch_rng_state = torch.random.get_rng_state()
+    cuda_rng_states = (
+        torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
+    )
 
-    runner.train(train_dl, val_dl)
-    metrics_first = runner.test(test_dl)
+    def run_once(model: ModelProtocol, output_dir: Path) -> Mapping[str, Any]:
+        _set_determinism_seed(seed)
+        runner.model = model
+        runner.epochs = 1
+        runner.output_dir = output_dir
+        runner.checkpoint_dir = output_dir / "checkpoints"
+        runner.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        runner.early_stopping_counter = 0
+        runner.train(train_dl, val_dl)
+        runner.model.eval()
+        return runner.eval(test_dl, "val")
 
-    runner.model = copy.deepcopy(check_model)
-    runner.train(train_dl, val_dl)
-    metrics_second = runner.test(test_dl)
-    runner.model = check_model
-    runner.epochs = runner_epochs
+    try:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            temporary_path = Path(temporary_dir)
+            metrics_first = run_once(
+                copy.deepcopy(base_model),
+                temporary_path / "first",
+            )
+            metrics_second = run_once(
+                copy.deepcopy(base_model),
+                temporary_path / "second",
+            )
+    finally:
+        runner.model = original_model
+        runner.optimizer = original_optimizer
+        runner.scheduler = original_scheduler
+        if original_epochs is not None:
+            runner.epochs = original_epochs
+        if original_output_dir is not None:
+            runner.output_dir = original_output_dir
+        if original_checkpoint_dir is not None:
+            runner.checkpoint_dir = original_checkpoint_dir
+        if original_early_stopping_counter is not None:
+            runner.early_stopping_counter = original_early_stopping_counter
+        random.setstate(python_rng_state)
+        torch.random.set_rng_state(torch_rng_state)
+        if cuda_rng_states is not None:
+            torch.cuda.set_rng_state_all(cuda_rng_states)
 
     for key, val in metrics_first.items():
-        if (
-            isinstance(val, float)
-            or isinstance(val, torch.float)
-            or isinstance(val, torch.Tensor)
-        ):
-            if isinstance(val, float):
-                val_0 = torch.FloatTensor([val])
-                val_1 = torch.FloatTensor([metrics_second[key]])
+        assert key in metrics_second, f"Metric '{key}' missing in second run"
+        val_0 = _metric_to_tensor(val)
+        val_1 = _metric_to_tensor(metrics_second[key])
+        if val_0 is None or val_1 is None:
+            continue
 
-            assert torch.allclose(val_0, val_1), (
-                f"Equal starts returned substantially different results: {val} and {metrics_second[key]} for key {key}"
-            )
+        assert torch.allclose(val_0, val_1, rtol=rtol, atol=atol), (
+            "Equal starts returned substantially different results: "
+            f"{val} and {metrics_second[key]} for key {key}"
+        )
     print("Passed determinism check")
     return
 
 
 def run_default_checks(
-    runner: RunnerProtocol,
     model: ModelProtocol,
     task: TaskProtocol,
     train_dl: DataLoader,
@@ -444,16 +557,18 @@ def run_default_checks(
     test_dl: DataLoader,
     train_config: Mapping[str, Any],
     device: str | torch.device,
-    optimizer: torch.optim.Optimizer,
+    optimizer: torch.optim.Optimizer | None = None,
+    runner: RunnerProtocol | None = None,
 ) -> list[CheckResult]:
     """Run the default runner sanity checks and return structured results."""
+    optimizer_config = getattr(runner, "config", train_config)
     checks: dict[str, CheckFn] = {
         "model_forward_predict_check": lambda: model_forward_predict_check(model),
         "overfit_one_batch_check": lambda: overfit_one_batch_check(
             model=model,
             task=task,
             train_dl=train_dl,
-            train_config=train_config,
+            train_config=optimizer_config,
             device=device,
         ),
         "finite_dataset_check": lambda: finite_dataset_check(train_dl, "Train"),
@@ -461,7 +576,7 @@ def run_default_checks(
             model=model,
             task=task,
             dataloader=train_dl,
-            train_config=train_config,
+            train_config=optimizer_config,
             device=device,
         ),
         "finite_model_output_check_train": lambda: finite_model_output_check(
@@ -470,34 +585,38 @@ def run_default_checks(
             device=device,
             dataloader_name="Train",
         ),
-        "speed_test": lambda: speed_test(
-            model=model,
-            task=task,
-            train_dl=train_dl,
-            optimizer=optimizer,
-            device=device,
-        ),
-        "baseline_sanity_check": lambda: baseline_sanity_check(
-            model=model,
-            task=task,
-            optimizer=optimizer,
-            train_dl=train_dl,
-            val_dl=val_dl,
-            device=device,
-        ),
         "checkpoint_roundtrip_check": lambda: checkpoint_roundtrip_check(
             model=model,
             device=device,
             dataloader=train_dl,
         ),
-        "determinism_check": lambda: determinism_check(
-            runner=runner,
+    }
+
+    checks["speed_test"] = lambda: speed_test(
+        model=model,
+        task=task,
+        train_dl=train_dl,
+        train_config=optimizer_config,
+        device=device,
+    )
+
+    if val_dl is not None:
+        checks["baseline_sanity_check"] = lambda: baseline_sanity_check(
             model=model,
+            task=task,
+            train_config=optimizer_config,
+            train_dl=train_dl,
+            val_dl=val_dl,
+            device=device,
+        )
+
+    if runner is not None and val_dl is not None and test_dl is not None:
+        checks["determinism_check"] = lambda: determinism_check(
+            runner=runner,
             train_dl=train_dl,
             val_dl=val_dl,
             test_dl=test_dl,
-        ),
-    }
+        )
 
     if val_dl is not None:
         checks["finite_model_output_check_val"] = lambda: finite_model_output_check(

@@ -126,7 +126,7 @@ Definition of Done (общий):
 
 Добавить ещё 5:
   1. [ ] `determinism_check`: 2 запуска sanity-run с одним seed дают близкие результаты (допуск)
-  2. [ ] `checkpoint_roundtrip_check`: save/load не меняет pred на одном batch
+  2. [x] `checkpoint_roundtrip_check`: save/load не меняет pred на одном batch
   3. [x] `baseline_sanity_check`: baseline не даёт “подозрительно идеальные” метрики (MSE≈0) без причины 
   4. [x] `speed_check`: sanity-run (например 100 шагов) не превышает порог времени (на твоей машине)
 
@@ -144,6 +144,7 @@ Definition of Done (общий):
 - вариант A: `ClassificationTask` (окна → класс)
 - вариант B: `AnomalyTask` (point-wise или window-wise)
 - вариант C: `RULTask` (регрессия по окнам)
+- вариант D: ReconstructionTask (восстановление)
 
 TODO:
 
