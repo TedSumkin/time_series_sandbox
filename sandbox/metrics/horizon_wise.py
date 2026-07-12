@@ -3,10 +3,8 @@ from torch import nn
 
 class pointwiseMSE(nn.Module):
     def __init__(self):
-        super(
-            pointwiseMSE,
-        ).__init__()
-        self.mse = nn.MSELoss(reduce=False)
+        super().__init__()
+        self.mse = nn.MSELoss(reduction="none")
 
     def forward(self, y_pred, y_true):
         return self.mse(y_pred, y_true)
@@ -14,10 +12,8 @@ class pointwiseMSE(nn.Module):
 
 class pointwiseMAE(nn.Module):
     def __init__(self):
-        super(
-            pointwiseMAE,
-        ).__init__()
-        self.mae = nn.L1Loss(reduce=False)
+        super().__init__()
+        self.mae = nn.L1Loss(reduction="none")
 
     def forward(self, y_pred, y_true):
         return self.mae(y_pred, y_true)

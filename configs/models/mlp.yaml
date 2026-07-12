@@ -9,7 +9,7 @@ input_dim: 168
 output_dim: 1
 
 # Number of future steps predicted by the model.
-horizon: 1
+horizon: ${tasks.config.window.horizon}
 
 # Hidden layer widths for the feed-forward backbone.
 hidden_dims:

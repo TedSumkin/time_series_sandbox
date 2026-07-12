@@ -27,6 +27,16 @@ class CheckResult:
 CheckFn = Callable[[], None]
 
 
+def _model_is_trainable(model: ModelProtocol) -> bool:
+    return any(param.requires_grad for param in model.parameters())
+
+
+def _total_loss(loss: Any) -> torch.Tensor:
+    if isinstance(loss, Mapping):
+        return loss["total"]
+    return loss
+
+
 def run_check(name: str, check_fn: CheckFn) -> CheckResult:
     """Run one check and convert success/failure into a structured result."""
     try:
@@ -220,6 +230,9 @@ def finite_grad_check(
     device: str | torch.device,
 ) -> None:
     """Check that gradients stay finite before and after one optimizer step."""
+    if not _model_is_trainable(model):
+        print("Finite gradients check skipped: model has no trainable parameters")
+        return
     print("Checking finite gradients...")
     check_model = copy.deepcopy(model)
     check_model.train()
@@ -232,12 +245,7 @@ def finite_grad_check(
         for batch in _iter_batches(dataloader):
             optimizer.zero_grad()
             output = check_model(batch)
-            loss = loss_fn(output, batch)
-            if isinstance(loss, dict):
-                try:
-                    loss = loss["total"]
-                finally:
-                    print("Check your loss dict structure in code")
+            loss = _total_loss(loss_fn(output, batch))
             loss.backward()
 
             for param in check_model.parameters():
@@ -264,6 +272,9 @@ def overfit_one_batch_check(
     max_loss_ratio: float = 1e-1,
 ) -> None:
     """Check that a model can strongly reduce loss on one batch."""
+    if not _model_is_trainable(model):
+        print("Overfitting check skipped: model has no trainable parameters")
+        return
     print("Checking overfitting on one batch...")
     check_model = copy.deepcopy(model)
     check_model.to(device)
@@ -276,9 +287,7 @@ def overfit_one_batch_check(
     for _ in range(num_steps):
         optimizer.zero_grad()
         output = check_model(batch)
-        loss = loss_fn(output, batch)
-        if isinstance(loss, Mapping):
-            loss = loss["total"]
+        loss = _total_loss(loss_fn(output, batch))
         loss.backward()
         optimizer.step()
         losses.append(float(loss.detach().cpu()))
@@ -385,8 +394,9 @@ def speed_test(
         batch = next(train_dl.__iter__())
         pred = check_model(batch)
         optimizer.zero_grad()
-        loss = task.loss_fn(pred, batch)
-        loss.backward()
+        loss = _total_loss(task.loss_fn(pred, batch))
+        if _model_is_trainable(check_model):
+            loss.backward()
         optimizer.step()
 
     end_time = time.time()
@@ -416,8 +426,9 @@ def baseline_sanity_check(
     for batch in train_dl:
         pred = check_model(batch)
         optimizer.zero_grad()
-        loss = loss_fn(pred, batch)
-        loss.backward()
+        loss = _total_loss(loss_fn(pred, batch))
+        if _model_is_trainable(check_model):
+            loss.backward()
         optimizer.step()
 
     check_model.eval()
@@ -425,9 +436,7 @@ def baseline_sanity_check(
         loss_value = 0
         for batch in val_dl:
             pred = check_model(batch)
-            loss = loss_fn(pred, batch)
-            if isinstance(loss, Mapping):
-                loss = loss["total"]
+            loss = _total_loss(loss_fn(pred, batch))
             loss_value += float(loss.detach().cpu())
         print(f"Baseline sanity check loss: {loss_value}")
         assert loss_value < 1e6, "Baseline sanity check failed: loss is too high"

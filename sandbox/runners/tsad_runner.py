@@ -1,6 +1,6 @@
 import sys
 from pathlib import Path
-from typing import Any, Dict, Mapping, Union
+from typing import Dict, Mapping, Union
 
 import torch
 from omegaconf import DictConfig
@@ -9,6 +9,8 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 
 import json
+
+from sandbox.runners.base_runner import BaseRunner
 
 # Allow running this file directly:
 # `python sandbox/runner/base_runner.py`
@@ -21,8 +23,8 @@ from sandbox.contracts import TaskProtocol, ModelProtocol
 from sandbox.utils import check as sanity_check
 
 
-class BaseRunner:
-    """Base runner for training, validation, and testing of forecasting models.
+class BaseTSADRunner(BaseRunner):
+    """Base runner for training, validation, and testing of TSAD models.
 
     This class orchestrates the training loop, evaluation, and testing procedures
     using a given model and task protocol. It handles device placement, optimizer
@@ -31,7 +33,7 @@ class BaseRunner:
     Attributes:
         output_dir (Union[Path, str]): Directory for experiment outputs.
         logger (SummaryWriter): TensorBoard logger for metrics.
-        model (ModelProtocol): The forecasting model to train/evaluate.
+        model (ModelProtocol): The TSAD model to train/evaluate.
         config (Union[Dict, DictConfig]): Experiment configuration.
         task (TaskProtocol): Task defining loss, metrics, and data semantics.
         device (str): Compute device ('cuda' or 'cpu').
@@ -56,76 +58,7 @@ class BaseRunner:
         task: TaskProtocol,
         model: ModelProtocol,
     ):
-        """Initialize the runner with configuration, logging, task, and model.
-
-        Args:
-            config (Union[Dict, DictConfig]): Experiment configuration dictionary.
-                Must contain "train", "eval", "test" sections.
-            logger (SummaryWriter): TensorBoard writer for logging metrics.
-            output_dir (Union[Path, str]): Directory where outputs (checkpoints,
-                logs, etc.) will be stored.
-            task (TaskProtocol): Task object providing loss function, metrics,
-                and data semantics.
-            model (ModelProtocol): Model object with forward, predict, and
-                configure_optimizers methods.
-            sanity_run_flag (bool): flag of sanity run mode.
-
-        Raises:
-            KeyError: If required configuration keys are missing.
-        """
-
-        # make fields corresponding to arguments
-        self.output_dir = output_dir
-        self.checkpoint_dir = Path(output_dir) / "checkpoints"
-        self.logger = logger
-        self.model = model
-        self.config = config
-        self.task = task
-
-        # check if the model is trainable
-        model_params = list(self.model.parameters())
-        self.is_trainable = any(p.requires_grad for p in model_params)
-
-        # Establish device to use in the experiment
-        self.device = config["train"]["device"]
-
-        if self.device is None:
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        elif isinstance(self.device, str) and self.device.startswith("cuda"):
-            if not torch.cuda.is_available():
-                self.device = "cpu"
-
-        self.train_config = self.config["train"]
-        self.eval_config = self.config["eval"]
-        self.test_config = self.config["test"]
-
-        # initialize loaders
-        self.train_dl = None
-        self.val_dl = None
-        self.test_dl = None
-
-        if self.is_trainable:
-            self.epochs = self.train_config["epochs"]
-        else:
-            print(
-                "The model does not have trainable params, epoch num is set equal to 1"
-            )
-            self.epochs = 1
-
-        self.key_val_metric = self.eval_config["init"].get("key_val_metric", "loss")
-        self.key_test_metric = self.eval_config["init"].get(
-            "key_test_metric", self.key_val_metric
-        )
-
-        # annotate optimizer and scheduler
-        self.optimizer, self.scheduler = self.model.configure_optimizers(self.config)
-        self.metrics = self.task.configure_metrics(self.eval_config)
-
-        self.early_stopping_counter = 0
-
-        self.patience = self.train_config["early_stopping"]["patience"]
-
-        self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        super(BaseTSADRunner, self).__init__(config, logger, output_dir, task, model)
 
     @torch.no_grad()
     def eval(self, dataloader: DataLoader, eval_mode: str) -> Dict[str, float]:
@@ -145,103 +78,13 @@ class BaseRunner:
         Raises:
             ValueError: If `eval_mode` is not "val" or "test".
         """
-
-        if eval_mode not in ["val", "test"]:
-            raise ValueError(f"Unexpected evaluation mode: {eval_mode}")
-        position = 0 if eval_mode == "test" else 1
-        description = "Validation" if eval_mode == "val" else "Test"
-        was_training = self.model.training
-        self.model.eval()
-        pbar_eval = tqdm(
-            dataloader,
-            desc=description,
-            position=position,
-        )
-        total_loss = 0.0
-        metric_sums = {name: 0.0 for name in self.metrics}
-        num_batches = 0
-
-        for batch in pbar_eval:
-            batch = self._move_batch_to_device(batch)
-            prediction = self.model.predict(batch)
-            if num_batches == 0 and eval_mode == "test":
-                self.task.visualize(prediction, batch, self.output_dir)
-            loss = self.task.loss_fn(prediction, batch)
-            if isinstance(loss, Mapping):
-                loss = loss["total"]
-            total_loss += loss.item()
-
-            # compute metrics
-            for name, metric_fn in self.metrics.items():
-                metric_sums[name] += metric_fn(prediction, batch).item()
-
-            num_batches += 1
-
-        if num_batches == 0:
-            return {"loss": 0.0}
-
-        avg_loss = total_loss / num_batches
-        result = {"loss": avg_loss}
-        for name in self.metrics:
-            result[name] = metric_sums[name] / num_batches
-        if was_training:
-            self.model.train()
-        return result
-
-    def _move_batch_to_device(self, batch: Any) -> Any:
-        """Move tensors in a nested batch container onto the runner device."""
-        if isinstance(batch, torch.Tensor):
-            return batch.to(self.device)
-        if isinstance(batch, Mapping):
-            return {key: self._move_batch_to_device(value) for key, value in batch.items()}
-        if isinstance(batch, tuple):
-            return tuple(self._move_batch_to_device(value) for value in batch)
-        if isinstance(batch, list):
-            return [self._move_batch_to_device(value) for value in batch]
-        return batch
-
-    def _train_epoch(self, train_dl: DataLoader):
-        """Perform a single training epoch.
-
-        Iterates over the training dataloader, computes loss, backpropagates,
-        and updates model parameters via the configured optimizer and scheduler.
-
-        Args:
-            train_dl (DataLoader): Training data loader.
-        """
-        pbar_train_epoch = tqdm(train_dl, desc="Train", position=1)
-
-        for batch in pbar_train_epoch:
-            batch = self._move_batch_to_device(batch)
-            self.optimizer.zero_grad()
-            outputs = self.model(batch)
-            loss = self.task.loss_fn(outputs, batch)  # type: ignore
-            if isinstance(loss, Mapping):
-                loss = loss["total"]
-
-            if self.is_trainable:
-                loss.backward()
-
-            self.optimizer.step()
-            if self.scheduler is not None:
-                self.scheduler.step()
-
-    def _val_epoch(self, val_dl: DataLoader) -> Dict[str, float]:
-        """Run validation for one epoch.
-
-        Delegates to `self.eval` with mode "val".
-
-        Args:
-            val_dl (DataLoader): Validation data loader.
-
-        Returns:
-            Dict[str, float]: Validation metrics.
-        """
-        return self.eval(val_dl, "val")
+        # TODO: it's just a placeholder, add functionality later
+        return super(BaseTSADRunner, self).eval(dataloader, eval_mode)
 
     def _early_stopping(
         self, old_metric_dict: Dict[str, float], metric_dict: Dict[str, float]
     ) -> bool:
+        # TODO: rewrite metric results
         if metric_dict[self.key_val_metric] < old_metric_dict[self.key_val_metric]:
             self.early_stopping_counter = 0
         else:
@@ -277,10 +120,7 @@ class BaseRunner:
         # setup model
         self.model.train()
         self.model.to(self.device)
-        self.key_val_metric = self.eval_config["init"].get("key_val_metric", "loss")
-        self.key_test_metric = self.eval_config["init"].get(
-            "key_test_metric", self.key_val_metric
-        )
+        self.key_val_metric = self.eval_config["init"]["key_val_metric"]
         # Re-initialize optimizer and scheduler (optional, could reuse existing)
         self.optimizer, self.scheduler = self.model.configure_optimizers(self.config)
         key_val_metric_value = torch.inf
@@ -305,8 +145,8 @@ class BaseRunner:
             # save best metric dict and checkpoints
             if metric_dict[self.key_val_metric] < key_val_metric_value:
                 key_val_metric_value = metric_dict[self.key_val_metric]
+                old_metric_dict = best_metric_dict
                 best_metric_dict = metric_dict
-                old_metric_dict = metric_dict
                 # temporal placeholder for checkpoint saving to the output dir
                 # implement save_checkpoint and save_vaL_metrics
                 self.model.save_checkpoint(self.checkpoint_dir)

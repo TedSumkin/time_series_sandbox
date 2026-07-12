@@ -4,6 +4,31 @@
 
 This repo is my pet project with utility functions and general functional used in most time-series researches. I'm going to transform it into a template for my future repos.
 
+## Quickstart
+
+```bash
+python -m pip install -r requirements.txt
+python -m pytest -q
+python run.py train.device=cpu
+python run.py sanity_run=False train.device=cpu train.epochs=1
+```
+
+The default config runs a forecasting sanity check on the ETT dataset. Put the
+CSV files under `data/ETT/` with names such as `ETTh1.csv`, or override
+`data=...` with another dataset config.
+
+Useful model overrides:
+
+```bash
+python run.py sanity_run=False train.device=cpu train.epochs=1 models=forecasting_cnn
+python run.py sanity_run=False train.device=cpu train.epochs=1 models=mlp
+python run.py sanity_run=False train.device=cpu train.epochs=1 models=naive_forecast
+python run.py sanity_run=False train.device=cpu train.epochs=1 models=nontrainable_ewma
+```
+
+Set `train.device=cuda` only when CUDA is available. If you omit it, the runner
+falls back to CPU when CUDA cannot be used.
+
 To add a new model to this pipeline, you need to perform the following steps:
 
 1. Create model file in ./sandbox/models/. The key class must implement methods

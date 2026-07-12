@@ -8,7 +8,7 @@ defaults:
   - optimizer: base
 
 sanity_run: True
-experiment_name: ett_mlp_forecasting
+experiment_name: ett_forecasting
 
 train:
   device: cuda
@@ -18,9 +18,8 @@ train:
 
 eval:
   init:
-    # TODO: main_val_metric -> key_test_metric
-    main_val_metric: loss
     key_val_metric: mse
+    key_test_metric: mse
 
 test: {}
 

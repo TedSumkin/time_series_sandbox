@@ -60,6 +60,7 @@ def main(cfg: DictConfig) -> str:
 
         # TO DO: move this block to runner code.
         # it looks unsafe
+        cfg.train.device = runner.device
         train_dl, val_dl, test_dl = task.build_dataloaders(cfg)
         runner.train_dl = train_dl
         runner.val_dl = val_dl
